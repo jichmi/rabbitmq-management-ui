@@ -1,10 +1,13 @@
-UNKNOWN_REPR = '<span class="unknown">?</span>';
-FD_THRESHOLDS=[[0.95, 'red'],
-               [0.8, 'yellow']];
-SOCKETS_THRESHOLDS=[[1.0, 'red'],
-                    [0.8, 'yellow']];
-PROCESS_THRESHOLDS=[[0.75, 'red'],
-                    [0.5, 'yellow']];
+const UNKNOWN_REPR = '<span class="unknown">?</span>';
+const FD_THRESHOLDS = [[0.95, 'red'],
+                       [0.8, 'yellow']];
+const SOCKETS_THRESHOLDS = [[1.0, 'red'],
+                            [0.8, 'yellow']];
+const PROCESS_THRESHOLDS = [[0.75, 'red'],
+                            [0.5, 'yellow']];
+
+const TAB_HIGHLIGHTER = "\u2192";
+const WHITESPACE_HIGHLIGHTER = "\u23B5";
 
 function fmt_string(str, unknown) {
     if (unknown == undefined) {
@@ -30,7 +33,7 @@ function fmt_si_prefix(num0, max0, thousand, allow_fractions) {
     var power = num_power[2];
     var powers = ['', 'k', 'M', 'G', 'T', 'P', 'E', 'Z', 'Y'];
     return (((power != 0 || allow_fractions) && max <= 10) ? num.toFixed(1) :
-            num.toFixed(0)) + powers[power];
+            num.toFixed(0)) + " " + powers[power];
 }
 
 function fmt_boolean(b, unknown) {
@@ -69,7 +72,7 @@ function fmt_timestamp_mini(ts) {
 }
 
 function fmt_time(t, suffix) {
-    if (t == undefined || t == 0) return '';
+    if (typeof t === "undefined") return '';
     return t + suffix;
 }
 
@@ -91,9 +94,24 @@ function fmt_policy_short(obj) {
     }
 }
 
+function fmt_op_policy_short(obj) {
+    if (obj.operator_policy != undefined && obj.operator_policy != '') {
+        return '<abbr class="policy" title="Operator policy: ' +
+            fmt_escape_html(obj.operator_policy) + '">' +
+            fmt_escape_html(obj.operator_policy) + '</abbr> ';
+    } else {
+        return '';
+    }
+}
+
 function fmt_features_short(obj) {
     var res = '';
     var features = args_to_features(obj);
+
+    if (obj.owner_pid_details != undefined) {
+        res += '<acronym title="Exclusive queue: click for owning connection">'
+            + link_conn(obj.owner_pid_details.name, "Excl") + '</acronym> ';
+    }
 
     for (var k in ALL_ARGS) {
         if (features[k] != undefined) {
@@ -107,6 +125,10 @@ function fmt_features_short(obj) {
         '">Args</abbr> ';
     }
     return res;
+}
+
+function fmt_activity_status(obj) {
+    return obj.replace('_', ' ');
 }
 
 function short_conn(name) {
@@ -125,7 +147,7 @@ function args_to_features(obj) {
     var res = {};
     for (var k in obj.arguments) {
         if (k in KNOWN_ARGS) {
-            res[k] = fmt_escape_html(obj.arguments[k]);
+            res[k] = fmt_escape_feature(obj.arguments[k]);
         }
         else {
             if (res.arguments == undefined) res.arguments = {};
@@ -143,6 +165,9 @@ function args_to_features(obj) {
     }
     if (obj.internal != undefined && obj.internal) {
         res['internal'] = true;
+    }
+    if (obj.messages_delayed != undefined){
+        res['messages delayed'] = obj.messages_delayed;
     }
     return res;
 }
@@ -174,6 +199,20 @@ function fmt_sync_state(queue) {
     res += (queue.messages == 0) ? 100 : Math.round(100 * queue.sync_messages /
                                                     queue.messages);
     res += '%</b></p>';
+    return res;
+}
+
+function fmt_members(queue) {
+    var res = '';
+    var isMajority = (queue.online.length >= (Math.floor(queue.members.length / 2) + 1));
+    var followers = queue.online;
+    followers.splice(followers.indexOf(queue.node), 1);
+    if (isMajority) {
+        res += ' <abbr title="Followers: ' + followers + '">+' +
+            followers.length + '</abbr>';
+    } else {
+        res += ' <abbr class="warning" title="Cluster is in minority">+' + followers.length + '</abbr>';
+    }
     return res;
 }
 
@@ -275,7 +314,8 @@ function fmt_rate_axis(num, max) {
 
 function fmt_bytes(bytes) {
     if (bytes == undefined) return UNKNOWN_REPR;
-    return fmt_si_prefix(bytes, bytes, 1024, false) + 'B';
+    var prefix = fmt_si_prefix(bytes, bytes, 1024, false);
+    return prefix + (prefix != bytes ? 'iB' : 'B');
 }
 
 function fmt_bytes_axis(num, max) {
@@ -452,6 +492,15 @@ function fmt_strip_tags(txt) {
     return ("" + txt).replace(/<(?:.|\n)*?>/gm, '');
 }
 
+function fmt_escape_feature(txt) {
+    // Exclude SAC which is the only boolean feature
+    if(txt === false) {
+        return undefined;
+    } else {
+        return fmt_escape_html0(txt).replace(/\n/g, '<br/>');
+    }
+}
+
 function fmt_escape_html(txt) {
     return fmt_escape_html0(txt).replace(/\n/g, '<br/>');
 }
@@ -523,6 +572,14 @@ function fmt_object_state(obj) {
         colour = 'yellow';
         explanation = 'Publishing rate recently throttled by server.';
     }
+    else if (obj.state == 'terminated') {
+        colour = 'yellow';
+        var terminated_by = "";
+        if (obj.terminated_by) {
+            terminated_by = " by \"" + String(obj.terminated_by) + "\"";
+        }
+        explanation = 'The queue is being deleted' + terminated_by + ".";
+    }
     else if (obj.state == 'down') {
         colour = 'red';
         explanation = 'The queue is located on a cluster node or nodes that ' +
@@ -532,6 +589,10 @@ function fmt_object_state(obj) {
         colour = 'red';
         explanation = 'The queue has crashed repeatedly and been unable to ' +
             'restart.';
+    }
+    else if (obj.state == 'stopped') {
+        colour = 'red';
+        explanation = 'The queue process was stopped by the vhost supervisor.';
     }
 
     return fmt_state(colour, text, explanation);
@@ -569,7 +630,14 @@ function fmt_shortened_uri(uri) {
 }
 
 function fmt_uri_with_credentials(uri) {
-    if (typeof uri == 'string') {
+    if (typeof uri == 'object') {
+        var res = [];
+        for (i in uri) {
+            res.push(fmt_uri_with_credentials(uri[i]));
+        }
+        return res;
+    }
+    else if (typeof uri == 'string') {
         // mask password
         var mask = /^([a-zA-Z0-9+-.]+):\/\/(.*):(.*)@/;
         return uri.replace(mask, "$1://$2:[redacted]@");
@@ -581,16 +649,21 @@ function fmt_uri_with_credentials(uri) {
 function fmt_client_name(properties) {
     var res = [];
     if (properties.product != undefined) {
-        res.push(fmt_trunc(properties.product, 10));
+        res.push(fmt_trunc(properties.product, 120));
     }
     if (properties.platform != undefined) {
-        res.push(fmt_trunc(properties.platform, 10));
+        res.push(fmt_trunc(properties.platform, 120));
     }
     res = res.join(" / ");
 
     if (properties.version != undefined) {
         res += '<sub>' + fmt_trunc(properties.version) + '</sub>';
     }
+
+    if (properties.client_id != undefined) {
+        res += '<sub>' + fmt_trunc(properties.client_id, 120) + '</sub>';
+    }
+
     return res;
 }
 
@@ -613,6 +686,49 @@ function esc(str) {
     return encodeURIComponent(str);
 }
 
+// Replaces a sequence of characters matched by a regular expression
+// group with the given character. Replaced group is combined with the stripped
+// original using the provided combine function.
+function replace_char_sequence_individually(input, regex, replacement, combine) {
+  let ms = input.match(regex);
+  if (ms == null) {
+    return input;
+  } else {
+    let n = ms[0].length;
+    return combine(replacement.repeat(n), input.replace(regex, ""));
+  }
+}
+
+// Replaces a leading sequence of characters matched by a regular expression
+// group with the given character.
+function replace_leading_chars(input, regex, replacement) {
+  return replace_char_sequence_individually(input, regex, replacement, function(patch, stripped_input) {
+      return patch + stripped_input;
+  });
+}
+
+// Replaces a trailing sequence of characters matched by a regular expression
+// group with the given character.
+function replace_trailing_chars(input, regex, replacement) {
+    return replace_char_sequence_individually(input, regex, replacement, function(patch, stripped_input) {
+      return stripped_input + patch;
+  });
+}
+
+// Highlights extra (leading and trailing) whitespace and tab characters
+// with suitable Unicode characters for improved visiblity.
+// Note that mid-word whitespace should not be highighted, which makes
+// the implementation trickier than a simple chain of replace/2 calls.
+function highlight_extra_whitespace(str) {
+  // Highlight leading and trailing whitespace individually but all tabs.
+  // This assumes that spaces are reasonable to use in the middle of a name
+  // but tabs are not used intentionally and must be highlighted even in the middle.
+  return [[replace_trailing_chars, /(\s+)$/g, WHITESPACE_HIGHLIGHTER],
+          [replace_leading_chars,  /^(\s+)/g, WHITESPACE_HIGHLIGHTER]].reduce(function(acc, triplet) {
+    return triplet[0](acc, triplet[1], triplet[2]);
+  }, str.replace(/\t/g, TAB_HIGHLIGHTER));
+}
+
 function link_conn(name, desc) {
     if (desc == undefined) {
         return _link_to(short_conn(name), '#/connections/' + esc(name));
@@ -623,32 +739,32 @@ function link_conn(name, desc) {
 }
 
 function link_channel(name) {
-    return _link_to(short_chan(name), '#/channels/' + esc(name))
+    return _link_to(short_chan(name), '#/channels/' + esc(name));
 }
 
 function link_exchange(vhost, name, args) {
     var url = esc(vhost) + '/' + (name == '' ? 'amq.default' : esc(name));
-    return _link_to(fmt_exchange0(name), '#/exchanges/' + url, true, args);
+    return _link_to(fmt_exchange0(highlight_extra_whitespace(name)), '#/exchanges/' + url, true, args);
 }
 
 function link_queue(vhost, name, args) {
-    return _link_to(name, '#/queues/' + esc(vhost) + '/' + esc(name), true, args);
+    return _link_to(highlight_extra_whitespace(name), '#/queues/' + esc(vhost) + '/' + esc(name), true, args);
 }
 
 function link_vhost(name) {
-    return _link_to(name, '#/vhosts/' + esc(name))
+    return _link_to(name, '#/vhosts/' + esc(name));
 }
 
 function link_user(name) {
-    return _link_to(name, '#/users/' + esc(name))
+    return _link_to(name, '#/users/' + esc(name));
 }
 
 function link_node(name) {
-    return _link_to(fmt_node(name), '#/nodes/' + esc(name))
+    return _link_to(fmt_node(name), '#/nodes/' + esc(name));
 }
 
 function link_policy(vhost, name) {
-    return _link_to(name, '#/policies/' + esc(vhost) + '/' + esc(name))
+    return _link_to(name, '#/policies/' + esc(vhost) + '/' + esc(name));
 }
 
 function _link_to(name, url, highlight, args) {
@@ -734,9 +850,8 @@ function filter_ui_pg(items, truncate, appendselect) {
 
 
 function filter_ui(items) {
-    current_truncate = (current_truncate == null) ?
-        parseInt(get_pref('truncate')) : current_truncate;
-     var truncate_input = '<input type="text" id="truncate" value="' +
+    var current_truncate = parseInt(get_pref('truncate'));
+    var truncate_input   = '<input type="text" id="truncate" value="' +
         current_truncate + '">';
      var selected = '';
     if (items.length > current_truncate) {
@@ -752,19 +867,19 @@ function filter_ui(items) {
 }
 
 function paginate_header_ui(pages, context){
-     var res = '<h2 class="updatable">' ;
-     res += ' All ' + context +' (' + pages.total_count + ((pages.filtered_count != pages.total_count) ?   ' Filtered: ' + pages.filtered_count  : '') +  ')';
-     res += '</h2>'
+     var res = '<h2 class="updatable">';
+     res += ' All ' + context +' (' + pages.total_count + ((pages.filtered_count != pages.total_count) ?  ', filtered down to ' + pages.filtered_count  : '') +  ')';
+     res += '</h2>';
     return res;
 }
 
-function pagiante_ui(pages, context){
+function paginate_ui(pages, context){
     var res = paginate_header_ui(pages, context);
     res += '<div class="hider">';
     res += '<h3>Pagination</h3>';
     res += '<div class="filter">';
     res += '<table class="updatable">';
-    res += '<tr>'
+    res += '<tr>';
     res += '<th><label for="'+ context +'-page">Page </label> <select id="'+ context +'-page" class="pagination_class pagination_class_select"  >';
     var page =  fmt_page_number_request(context, pages.page);
     if (pages.page_count > 0 &&  page > pages.page_count){
@@ -779,10 +894,10 @@ function pagiante_ui(pages, context){
     res +=    '<option value="' + i + '"> ' + i + '</option>';
              } };
     res += '</select> </th>';
-    res += '<th><label for="'+ context +'-pageof">of </label>  ' + pages.page_count +'</th>';
-    res += '<th><span><label for="'+ context +'-name"> - Filter: </label> <input id="'+ context +'-name"  data-page-start="1"  class="pagination_class pagination_class_input" type="text"' ;
-    res +=   'value = ' + fmt_filter_name_request(context, "") + '>' ;
-    res +=   '</input></th></span>' ;
+    res += '<th><label for="' + context +'-pageof">of </label>  ' + pages.page_count +'</th>';
+    res += '<th><span><label for="'+ context +'-name"> - Filter: </label> <input id="'+ context +'-name"  data-page-start="1"  class="pagination_class pagination_class_input" type="text"';
+    res +=   'value = ' + fmt_filter_name_request(context, "") + '>';
+    res +=   '</input></th></span>';
 
     res += '<th> <input type="checkbox" data-page-start="1" class="pagination_class pagination_class_checkbox" id="'+ context +'-filter-regex-mode"' ;
 
@@ -793,10 +908,10 @@ function pagiante_ui(pages, context){
     res += '<span><label for="'+ context +'-pagesize"> Displaying ' + pages.item_count + '  item'+ ((pages.item_count > 1) ? 's' : '' ) + ' , page size up to: </label> ';
     res +=       ' <input id="'+ context +'-pagesize" data-page-start="1" class="pagination_class shortinput pagination_class_input" type="text" ';
     res +=   'value = "' +  fmt_page_size_request(context, pages.page_size) +'"';
-    res +=   'onkeypress = "return isNumberKey(event)"> </input></span></p>' ;
-    res += '</tr>'
-    res += '</div>'
-    res += '</div>'
+    res +=   'onkeypress = "return isNumberKey(event)"> </input></span></p>';
+    res += '</tr>';
+    res += '</div>';
+    res += '</div>';
     return res;
 }
 
@@ -818,7 +933,7 @@ function fmt_sort(display, sort) {
     var prefix = '';
     if (current_sort == sort) {
         prefix = '<span class="arrow">' +
-            (current_sort_reverse ? '&#9660; ' : '&#9650; ') +
+            (current_sort_reverse ? '&#9661; ' : '&#9651; ') +
             '</span>';
     }
     return '<a class="sort" sort="' + sort + '">' + prefix + display + '</a>';
@@ -884,40 +999,68 @@ function properties_size(obj) {
     return count;
 }
 
-function frm_default_value(template, defaultValue){
-    var store_value = get_pref(template);
-    var result = (((store_value == null)
-      || (store_value == undefined)
-      || (store_value == '')) ? defaultValue :
-    store_value);
+function stored_value_or_default(template, defaultValue){
+    var stored_value = get_pref(template);
+    var result = (((stored_value == null)
+      || (stored_value == undefined)
+      || (stored_value == '')) ? defaultValue :
+    stored_value);
 
    return ((result == undefined) ? defaultValue : result);
 }
 
 function fmt_page_number_request(template, defaultPage){
-     if  ((defaultPage == undefined) || (defaultPage <= 0))
+     if  ((defaultPage == undefined) || (defaultPage <= 0)) {
          defaultPage = 1;
-    return frm_default_value(template + '_current_page_number', defaultPage);
+     }
+    return stored_value_or_default(template + '_current_page_number', defaultPage);
 }
 function fmt_page_size_request(template, defaultPageSize){
-    if  ((defaultPageSize == undefined) || (defaultPageSize < 0))
+    if  ((defaultPageSize == undefined) || (defaultPageSize < 0)) {
         defaultPageSize = 100;
-    result = frm_default_value(template + '_current_page_size', defaultPageSize);
-    if (result > 500) result = 500; // max
+    }
+
+    var result = stored_value_or_default(template + '_current_page_size', defaultPageSize);
+    if (result > 500) {
+        // hard limit
+        result = 500;
+    }
     return result;
 }
 
 function fmt_filter_name_request(template, defaultName){
-    return frm_default_value(template + '_current_filter_name', defaultName);
+    return fmt_escape_html(stored_value_or_default(template + '_current_filter_name', defaultName));
 }
 
 function fmt_regex_request(template, defaultName){
-    result = frm_default_value(template + '_current_regex', defaultName);
-    return result;
+    return fmt_escape_html(stored_value_or_default(template + '_current_regex', defaultName));
+}
+
+function fmt_vhost_state(vhost){
+    var cluster_state = vhost.cluster_state;
+    var down_nodes = [];
+    var ok_count = 0;
+    var non_ok_count = 0;
+    for(var node in cluster_state){
+        var node_state = cluster_state[node];
+        if(cluster_state[node] == "stopped" || cluster_state[node] == "nodedown"){
+            non_ok_count++;
+            down_nodes.push(node);
+        } else if(cluster_state[node] == "running"){
+            ok_count++;
+        }
+    }
+    if(non_ok_count == 0 ){
+        return fmt_state('green', 'running', '');
+    } else if(non_ok_count > 0 && ok_count == 0){
+        return fmt_state('red', 'stopped', 'Vhost supervisor is not running.');
+    } else if(non_ok_count > 0 && ok_count > 0){
+        return fmt_state('yellow', 'partial', 'Vhost supervisor is stopped on some cluster nodes: ' + down_nodes.join(', '));
+    }
 }
 
 function isNumberKey(evt){
-    var charCode = (evt.which) ? evt.which : event.keyCode
+    var charCode = (evt.which) ? evt.which : event.keyCode;
     if (charCode > 31 && (charCode < 48 || charCode > 57))
         return false;
     return true;

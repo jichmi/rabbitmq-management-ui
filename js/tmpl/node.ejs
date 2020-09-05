@@ -3,10 +3,11 @@
 
 <% if (!node.running) { %>
 <p class="warning">Node not running</p>
-<% } else if (node.os_pid == undefined) { %>
+<% } else if ((node.os_pid == undefined) && (!disable_stats)) { %>
 <p class="warning">Node statistics not available</p>
 <% } else { %>
 
+<% if(!disable_stats) { %>
 <div class="section">
 <h2>Overview</h2>
 <div class="hider">
@@ -34,12 +35,12 @@
     </tr>
     <tr>
       <th>
-        <a href="http://www.rabbitmq.com/configure.html" target="_blank">Config file</a>
+        <a href="https://www.rabbitmq.com/configure.html" target="_blank">Config file</a>
       </th>
       <td>
   <%
      for (var i = 0; i < node.config_files.length; i++) {
-       var config = node.config_files[i];
+       var config = fmt_escape_html(node.config_files[i]);
   %>
         <code><%= config %></code>
   <% } %>
@@ -52,15 +53,19 @@
       </td>
     </tr>
     <tr>
-      <th>Log file</th>
+      <th>
+<% if (node.log_files.length == 1) { %>
+        Log file
+<% } else { %>
+        Log files
+<% } %>
+      </th>
       <td>
-        <code><%= node.log_file %></code>
-      </td>
-    </tr>
-    <tr>
-      <th>SASL log file</th>
-      <td>
-        <code><%= node.sasl_log_file %></code>
+      <pre style="margin-top: 0px; margin-bottom: 0px;"><%
+   for (var i = 0; i < node.log_files.length; i++) {
+     var config = fmt_escape_html(node.log_files[i]);
+%><%= config %>
+<% } %></pre>
       </td>
     </tr>
   </table>
@@ -68,6 +73,7 @@
 </div>
 </div>
 
+<% if(!disable_stats) { %>
 <div class="section">
 <h2>Process statistics</h2>
 <div class="hider">
@@ -104,7 +110,7 @@
     </tr>
     <tr>
       <th>
-        Memory
+        Memory <span class="help" id="memory-calculation-strategy"></span>
       </th>
       <td>
 <% if (node.mem_limit != 'memory_monitoring_disabled') { %>
@@ -143,7 +149,7 @@
   <%= rates_chart_or_text('mnesia-stats-count', node,
       [['RAM only', 'mnesia_ram_tx_count'],
        ['Disk', 'mnesia_disk_tx_count']],
-      fmt_rate, fmt_rate_axis, true, 'Mnesia transactions', 'mnesia-transactions') %>
+      fmt_rate, fmt_rate_axis, true, 'Schema data store transactions', 'mnesia-transactions') %>
 
   <%= rates_chart_or_text('persister-msg-stats-count', node,
       [['QI Journal', 'queue_index_journal_write_count'],
@@ -184,6 +190,29 @@
       fmt_ms, fmt_ms, false, 'I/O average time per operation') %>
 </div>
 </div>
+
+<div class="section-hidden">
+<h2>Churn statistics</h2>
+<div class="hider">
+  <%= rates_chart_or_text('connection-churn', node,
+      [['Created', 'connection_created'],
+       ['Closed', 'connection_closed']],
+      fmt_rate, fmt_rate_axis, true, 'Connection operations', 'connection-operations') %>
+
+  <%= rates_chart_or_text('channel-churn', node,
+      [['Created', 'channel_created'],
+       ['Closed', 'channel_closed']],
+      fmt_rate, fmt_rate_axis, true, 'Channel operations', 'channel-operations') %>
+
+  <%= rates_chart_or_text('queue-churn', node,
+      [['Declared', 'queue_declared'],
+       ['Created', 'queue_created'],
+       ['Deleted', 'queue_deleted']],
+      fmt_rate, fmt_rate_axis, true, 'Queue operations', 'queue-operations') %>
+
+</div>
+</div>
+<% } %>
 
 <div class="section-hidden">
 <h2>Cluster links</h2>
@@ -230,13 +259,14 @@
 <% } %>
 
 </div>
+<% } %>
 
 <!--
   The next two need to be non-updatable or we will wipe the memory details
   as soon as we have drawn it.
  -->
 
-<% if (node.running && node.os_pid != undefined) { %>
+<% if (node.running && (node.os_pid != undefined || disable_stats)) { %>
 
 <div class="section">
 <h2>Memory details</h2>
@@ -260,6 +290,7 @@
 
 <% } %>
 
+<% if(!disable_stats) { %>
 <div class="updatable">
 <% if (node.running && node.os_pid != undefined) { %>
 
@@ -320,6 +351,18 @@
   </table>
 </div>
 
+<div class="box">
+  <h3>Quorum queue open file metrics</h3>
+  <table class="facts">
+    <% for(var k in node.ra_open_file_metrics) { %>
+    <tr>
+      <th><%= k %></th>
+      <td><%= node.ra_open_file_metrics[k] %></td>
+    </tr>
+    <% } %>
+  </table>
+</div>
+
 <h3>Plugins <span class="help" id="plugins"></span></h3>
 <table class="list">
   <tr>
@@ -367,6 +410,7 @@
 </div>
 </div>
 
+<% } %>
 <% } %>
 
 </div>

@@ -9,17 +9,30 @@
 <table class="list">
   <thead>
   <tr>
-    <th colspan="2">Overview</th>
+    <%= group_heading('vhosts', 'Overview', [true, true, true]) %>
+    <% if (!disable_stats) { %>
     <%= group_heading('vhosts', 'Messages', []) %>
     <%= group_heading('vhosts', 'Network', []) %>
 <% if (rates_mode != 'none') { %>
     <%= group_heading('vhosts', 'Message rates', []) %>
 <% } %>
+    <% } %>
     <th class="plus-minus"><span class="popup-options-link" title="Click to change columns" type="columns" for="vhosts">+/-</span></th>
   </tr>
     <tr>
       <th><%= fmt_sort('Name', 'name') %></th>
       <th>Users <span class="help" id="internal-users-only"></span></th>
+      <th>State</th>
+<% if (show_column('vhosts',           'cluster-state')) { %>
+      <th>Cluster state</th>
+<% } %>
+<% if (show_column('vhosts',           'description')) { %>
+      <th>Description</th>
+<% } %>
+<% if (show_column('vhosts',           'tags')) { %>
+      <th>Tags</th>
+<% } %>
+<% if (!disable_stats) { %>
 <% if (show_column('vhosts',           'msgs-ready')) { %>
       <th><%= fmt_sort('Ready',        'messages_ready') %></th>
 <% } %>
@@ -43,6 +56,7 @@
       <th><%= fmt_sort('deliver / get','message_stats.deliver_get_details.rate') %></th>
   <% } %>
 <% } %>
+<% } %>
     </tr>
   </thead>
   <tbody>
@@ -54,6 +68,42 @@
          <td><%= link_vhost(vhost.name) %></td>
          <td class="c"><%= fmt_permissions(vhost, permissions, 'vhost', 'user',
                            '<p class="warning">No users</p>') %></td>
+         <td><%= fmt_vhost_state(vhost) %></td>
+<% if (show_column('vhosts', 'cluster-state')) { %>
+         <td>
+             <table>
+             <tbody>
+            <%
+            for (var node in vhost.cluster_state) {
+                var state = vhost.cluster_state[node];
+            %>
+            <tr>
+            <td><%= node %></td>
+            <td>
+            <%= state %>
+            <% if (state == "stopped"){ %>
+                <form action="#/restart_vhost" method="post" class="confirm">
+                    <input type="hidden" name="node" value="<%= node %>"/>
+                    <input type="hidden" name="vhost" value="<%= vhost.name %>"/>
+                    <input type="submit" value="Restart"/>
+                </form>
+            <% } %>
+            </td>
+            </tr>
+            <%
+            }
+            %>
+             </tbody>
+             </table>
+         </td>
+<% } %>
+<% if (show_column('vhosts', 'description')) { %>
+   <td class="r"><%= fmt_string(vhost.description) %></td>
+<% } %>
+<% if (show_column('vhosts', 'tags')) { %>
+   <td class="r"><%= fmt_string(vhost.tags) %></td>
+<% } %>
+<% if (!disable_stats) { %>
 <% if (show_column('vhosts', 'msgs-ready')) { %>
    <td class="r"><%= fmt_num_thousands(vhost.messages_ready) %></td>
 <% } %>
@@ -77,6 +127,7 @@
     <td class="r"><%= fmt_detail_rate(vhost.message_stats, 'deliver_get') %></td>
   <% } %>
 <% } %>
+<% } %>
        </tr>
     <% } %>
   </tbody>
@@ -96,6 +147,14 @@
         <tr>
           <th><label>Name:</label></th>
           <td><input type="text" name="name"/><span class="mand">*</span></td>
+        </tr>
+        <tr>
+          <th><label>Description:</label></th>
+          <td><input type="text" name="description"/></td>
+        </tr>
+        <tr>
+          <th><label>Tags:</label></th>
+          <td><input type="text" name="tags"/></td>
         </tr>
       </table>
       <input type="submit" value="Add virtual host"/>

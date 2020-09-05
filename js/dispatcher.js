@@ -14,7 +14,6 @@ dispatcher_add(function(sammy) {
             }
             render(reqs, 'overview', '#/');
         });
-    sammy.get('#/login/:username/:password', login_route);
 
     path('#/cluster-name', {'cluster_name': '/cluster-name'}, 'cluster-name');
     sammy.put('#/cluster-name', function() {
@@ -65,7 +64,7 @@ dispatcher_add(function(sammy) {
                    'channel', '#/channels');
         });
 
-    
+
     sammy.get('#/exchanges', function() {
             renderExchanges();
         });
@@ -95,10 +94,9 @@ dispatcher_add(function(sammy) {
         });
 
     sammy.get('#/queues', function() {
-                          renderQueues();
-            });
+            renderQueues();
+        });
 
-    
     sammy.get('#/queues/:vhost/:name', function() {
             var path = '/queues/' + esc(this.params['vhost']) + '/' + esc(this.params['name']);
             render({'queue': {path:    path,
@@ -118,7 +116,7 @@ dispatcher_add(function(sammy) {
             else if (this.params['mode'] == 'purge') {
                 if (sync_delete(this, '/queues/:vhost/:name/contents')) {
                     show_popup('info', "Queue purged");
-                    update_partial();
+                    partial_update();
                 }
             }
             return false;
@@ -154,7 +152,9 @@ dispatcher_add(function(sammy) {
                                                  'msg-rates-vhost',
                                                  'data-rates-vhost']}},
                     'permissions': '/vhosts/' + esc(this.params['id']) + '/permissions',
-                    'users': '/users/'},
+                    'topic_permissions': '/vhosts/' + esc(this.params['id']) + '/topic-permissions',
+                    'users': '/users/',
+                    'exchanges' : '/exchanges/' + esc(this.params['id'])},
                 'vhost', '#/vhosts');
         });
 
@@ -177,14 +177,23 @@ dispatcher_add(function(sammy) {
                                options: {sort:true}},
                      'permissions': '/permissions'}, 'users');
     sammy.get('#/users/:id', function() {
+        var vhosts = JSON.parse(sync_get('/vhosts'));
             render({'user': '/users/' + esc(this.params['id']),
                     'permissions': '/users/' + esc(this.params['id']) + '/permissions',
-                    'vhosts': '/vhosts/'}, 'user',
+                    'topic_permissions': '/users/' + esc(this.params['id']) + '/topic-permissions',
+                    'vhosts': '/vhosts/',
+                    'exchanges': '/exchanges/' + esc(vhosts[0].name)}, 'user',
                    '#/users');
         });
     sammy.put('#/users-add', function() {
-            if (sync_put(this, '/users/:username'))
+            res = sync_put(this, '/users/:username');
+            if (res) {
+                if (res.http_status === 204) {
+                    username = res.req_params.username;
+                    show_popup('warn', "Updated an existing user: '" + username + "'");
+                }
                 update();
+            }
             return false;
         });
     sammy.put('#/users-modify', function() {
@@ -198,6 +207,15 @@ dispatcher_add(function(sammy) {
             return false;
         });
 
+    path('#/feature-flags', {'feature_flags': {path:    '/feature-flags',
+                                               options: {sort:true}},
+                             'permissions': '/permissions'}, 'feature-flags');
+    sammy.put('#/feature-flags-enable', function() {
+            if (sync_put(this, '/feature-flags/:name/enable'))
+                update();
+            return false;
+        });
+
     sammy.put('#/permissions', function() {
             if (sync_put(this, '/permissions/:vhost/:username'))
                 update();
@@ -208,7 +226,18 @@ dispatcher_add(function(sammy) {
                 update();
             return false;
         });
+    sammy.put('#/topic-permissions', function() {
+            if (sync_put(this, '/topic-permissions/:vhost/:username'))
+                update();
+            return false;
+        });
+    sammy.del('#/topic-permissions', function() {
+            if (sync_delete(this, '/topic-permissions/:vhost/:username/:exchange'))
+                update();
+            return false;
+        });
     path('#/policies', {'policies': '/policies',
+                        'operator_policies': '/operator-policies',
                         'vhosts':   '/vhosts'}, 'policies');
     sammy.get('#/policies/:vhost/:id', function() {
             render({'policy': '/policies/' + esc(this.params['vhost'])
@@ -216,7 +245,8 @@ dispatcher_add(function(sammy) {
                 'policy', '#/policies');
         });
     sammy.put('#/policies', function() {
-            put_policy(this, ['name', 'pattern', 'policy'], ['priority'], []);
+            put_cast_params(this, '/policies/:vhost/:name',
+                            ['name', 'pattern', 'policy'], ['priority'], []);
             return false;
         });
     sammy.del('#/policies', function() {
@@ -224,23 +254,65 @@ dispatcher_add(function(sammy) {
                 go_to('#/policies');
             return false;
         });
+    sammy.put('#/operator_policies', function() {
+            this.params = rename_multifield(this.params, "definitionop", "definition");
+            put_cast_params(this, '/operator-policies/:vhost/:name',
+                            ['name', 'pattern', 'policy'], ['priority'], []);
+            return false;
+        });
+    sammy.del('#/operator_policies', function() {
+            if (sync_delete(this, '/operator-policies/:vhost/:name'))
+                update();
+        });
 
     sammy.put('#/logout', function() {
-            // clear a local storage value used by earlier versions
-            clear_pref('auth');
-            clear_cookie_value('auth');
-            location.reload();
-        });
+        // clear a local storage value used by earlier versions
+        clear_pref('auth');
+        clear_cookie_value('auth');
+        if (uaa_logged_in) {
+            clear_pref('uaa_token');
+            var redirect;
+            if (window.location.hash != "") {
+                redirect = window.location.href.split(window.location.hash)[0];
+            } else {
+                redirect = window.location.href
+            };
+            uaa_logged_in = false;
+            var logoutRedirectUrl = Singular.properties.uaaLocation + '/logout.do?client_id=' + Singular.properties.clientId + '&redirect=' + redirect;
+            get(logoutRedirectUrl, "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", function(req) { });
+        }
+        location.reload();
+    });
 
-    sammy.get('#/import-succeeded', function() {
-            render({}, 'import-succeeded', '#/overview');
-        });
     sammy.put('#/rate-options', function() {
             update_rate_options(this);
         });
     sammy.put('#/column-options', function() {
             update_column_options(this);
         });
+    path('#/limits', {'limits': '/vhost-limits',
+                      'vhosts': '/vhosts'}, 'limits');
+
+    sammy.put('#/limits', function() {
+        var valAsInt = parseInt(this.params.value);
+        if (isNaN(valAsInt)) {
+            var e = 'Validation failed\n\n' +
+                this.params.name + ' should be a number, actually was "' +
+                this.params.value + '"';
+            show_popup('warn', fmt_escape_html(e));
+        } else {
+            this.params.value = valAsInt;
+            if (sync_put(this, '/vhost-limits/:vhost/:name')) {
+                update();
+            }
+        }
+    });
+    sammy.post('#/restart_vhost', function(){
+        if(sync_post(this, '/vhosts/:vhost/start/:node')) update();
+    })
+    sammy.del('#/limits', function() {
+        if (sync_delete(this, '/vhost-limits/:vhost/:name')) update();
+    });
     sammy.del("#/reset", function(){
             if(sync_delete(this, '/reset')){
                 update();

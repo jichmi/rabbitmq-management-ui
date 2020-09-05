@@ -12,10 +12,6 @@ a:hover { color: #F60; }
 #logo { padding: 0 0 2em 0; }
 #logo img { margin: 1em 0 -0.3em 1em; border: none; }
 
-#hostlist {float: right; right:50%; width:550px; padding: 0px;}
-#hostlist td {width: 100px; text-align: right; font-size: 16px; font-weight: bold; text-decoration: none; white-space: nowrap;}
-.curhost {color: red!important;background-color: #fff!important; font-size: 20px; text-align: left; padding: 0 10px;}
-
 #versions abbr { background: #f0f0f0; margin: 0 0 0 1em; }
 
 .status-ok { }
@@ -96,8 +92,8 @@ table.legend td { padding: 4px 0 4px 10px; width: 130px; }
 input#truncate { width: 50px; text-align: right; }
 
 table { border-collapse: collapse; }
-table th { font-weight: normal; color: black; }
-table th, table td { font: 12px Verdana, sans-serif; padding: 2px 4px; }
+table th { font-weight: normal; color: black; padding: 6px 5px 5px 5px; line-height: 1em; }
+table td { padding: 2px 5px; }
 table.list th, table.list td { vertical-align: top; min-width: 5em; width: auto; }
 
 table.list { border-width: 1px; margin-bottom: 1em; }
@@ -176,7 +172,7 @@ tr.alt2>td {
 td span,
 td abbr {
   display: inline-block;
-  padding: 3px 5px;
+  padding: 2px 4px;
   margin: 0 0 3px 0;
 }
 
@@ -286,7 +282,7 @@ table.form { margin-bottom: 0.5em; }
 table.form th { text-align: right; vertical-align: top; }
 table.form input[type=text], table.form input[type=password] { width: 200px; }
 table.form input[type=text].wide, table.form input[type=password].wide { width: 300px; }
-table.form select { width: 200px; }
+table.form select { width: auto; }
 table.form select.narrow { width: 110px; }
 table.form .multifield { margin: 0; padding: 0; }
 table.form .multifield td { margin: 0; padding: 0; vertical-align: top; }
@@ -307,6 +303,7 @@ table.two-col-layout { width: 100%; }
 table.two-col-layout > tbody > tr > td { width: 50%; vertical-align: top; }
 
 input[type=submit], button, a.button { padding: 8px; border-radius: 5px; -moz-border-radius: 5px; text-decoration: none !important; cursor: pointer; display: block; font-weight: normal !important; }
+table.list input[type=submit], table.list button { padding: 3px 7px; margin: 0 0 3px 0; }
 table.list input[type=submit], table.list button, table.list a.button { padding: 3px 7px; margin: 0 0 3px 0; }
 
 input[type=submit], button, a.button {
@@ -324,13 +321,18 @@ input[type=submit][disabled]:hover, button[disabled]:hover, a.button.disabled { 
 
 h3 { padding: 0 0 2px 0; margin: 1em 0 1em 0; font-size: 1em; border-bottom: 1px solid #E4E4E4; font-weight: normal; }
 
-abbr { background: #99EBFF; padding: 3px 5px; border-radius: 5px; -moz-border-radius: 5px; border: none; cursor: default; text-decoration: none; }
+abbr { background: #99EBFF; padding: 2px 4px; border-radius: 5px; -moz-border-radius: 5px; border: none; cursor: default; text-decoration: none; }
 
 table.list td abbr a { display: inline; width: auto; }
 
-abbr.warning { background: #ff7a79; }
+abbr.warning { background: red; }
 
 .status-red abbr, .status-yellow abbr, .status-green abbr, .status-grey abbr, small abbr, abbr.normal { background: none; color: inherit; padding: 0; border-bottom: 1px dotted; cursor: default; }
+
+abbr.status-grey { background: #ddd; }
+abbr.status-green { background: #98f898; }
+abbr.status-yellow { background: #ffff7b; }
+abbr.status-red { background: #ff7a7a; color: white; }
 
 abbr.type { background: none; color: inherit; padding: 0; border-bottom: 1px dotted #ddd; cursor: default; }
 
@@ -355,3 +357,5 @@ div.bindings-wrapper p.arrow { font-size: 200%; }
     background: -webkit-gradient(linear, left top, left bottom, color-stop(0, #f0f0f0),color-stop(1, #e0e0e0));
     border: 1px solid #e0e0e0;
 }
+
+table.dynamic-shovels td label {width: 200px; margin-right:10px;padding: 4px 0px 5px 0px}
