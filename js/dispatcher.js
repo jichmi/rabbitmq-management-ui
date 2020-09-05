@@ -281,7 +281,7 @@ dispatcher_add(function(sammy) {
             var logoutRedirectUrl = Singular.properties.uaaLocation + '/logout.do?client_id=' + Singular.properties.clientId + '&redirect=' + redirect;
             get(logoutRedirectUrl, "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", function(req) { });
         }
-        location.reload();
+        location.reload(true);
     });
 
     sammy.put('#/rate-options', function() {

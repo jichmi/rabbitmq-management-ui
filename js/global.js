@@ -613,6 +613,17 @@ var user;
 
 // Set up the above vars
 function setup_global_vars() {
+    host = get_cookie('host');
+    $.each(hostlist, function(index,value){
+        $('#host').append($('<option>', {value: value, text: value, selected: value == host ? true : false }));
+    });
+    set_host_cookie($('#host').val());
+    $("#host").change(function(){
+        host = $(this).val();
+        $('#curhost').html(host);
+        set_host_cookie(host);
+        show_popup('info', '已切换到主机(集群): <span class="curhost">' + host + '</span>');
+    });
     var overview = JSON.parse(sync_get('/overview'));
     rates_mode = overview.rates_mode;
     user_tags = expand_user_tags(user.tags.split(","));
@@ -781,3 +792,7 @@ var last_page_out_of_range_error = 0;
 var enable_uaa;
 var uaa_client_id;
 var uaa_location;
+var uaa_logged_in = false;
+var uaa_invalid = false;
+var auth;
+var host;

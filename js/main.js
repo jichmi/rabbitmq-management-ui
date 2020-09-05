@@ -1,15 +1,54 @@
 $(document).ready(function() {
+    replace_content('outer', format('login', {}));
+    host = get_cookie('host');
+    $.each(hostlist, function(index,value){
+        $('#host').append($('<option>', {value: value, text: value, selected: value == host ? true : false }));
+    });
+    set_host_cookie($('#host').val());
+    $("#host").change(function(){
+        host = $(this).val();
+        set_host_cookie(host);
+    });
+    uaa_logged_in = false;
+    uaa_invalid = false;
+    auth = JSON.parse(sync_get('/auth'));
+    enable_uaa = auth.enable_uaa;
+    uaa_client_id = auth.uaa_client_id;
+    uaa_location = auth.uaa_location;
     if (enable_uaa) {
-        get(uaa_location + "/info", "application/json", function(req) {
-            if (req.status !== 200) {
-                replace_content('outer', format('login_uaa', {}));
-                replace_content('login-status', '<p class="warning">' + uaa_location + " does not appear to be a running UAA instance or may not have a trusted SSL certificate"  + '</p> <button id="loginWindow" onclick="uaa_login_window()">Single Sign On</button>');
-            } else {
-                replace_content('outer', format('login_uaa', {}));
-            }
+      Singular.init({
+       singularLocation: './js/singular/',
+       uaaLocation: uaa_location,
+       clientId: uaa_client_id,
+       onIdentityChange: function (identity) {
+        uaa_logged_in = true;
+        start_app_login();
+       },
+       onLogout: function () {
+        uaa_logged_in = false;
+        var hash = window.location.hash.substring(1);
+        var params = {}
+        hash.split('&').map(hk => {
+         let temp = hk.split('=');
+         params[temp[0]] = temp[1]
         });
+        if (params.error) {
+         uaa_invalid = true;
+         replace_content('login-status', '<p class="warning">' + decodeURIComponent(params.error) + ':' + decodeURIComponent(params.error_description) + '</p> <button id="loginWindow" onclick="uaa_login_window()">Click here to log out</button>');
+        } else {
+         replace_content('login-status', '<button id="loginWindow" onclick="uaa_login_window()">Click here to log in</button>');
+        }
+       }
+      });
+      get(uaa_location + "/info", "application/json", function(req) {
+          if (req.status !== 200) {
+              replace_content('outer', format('login_uaa', {}));
+              replace_content('login-status', '<p class="warning">' + uaa_location + " does not appear to be a running UAA instance or may not have a trusted SSL certificate"  + '</p> <button id="loginWindow" onclick="uaa_login_window()">Single Sign On</button>');
+          } else {
+              replace_content('outer', format('login_uaa', {}));
+          }
+      });
     } else {
-        replace_content('outer', format('login', {}));
         start_app_login();
     }
 });
@@ -42,6 +81,10 @@ function set_auth_pref(userinfo) {
         date.setHours(date.getHours() + 8);
     }
     store_cookie_value_with_expiration('auth', encodeURIComponent(b64), date);
+}
+
+function set_host_cookie(host) {
+    document.cookie = 'host=' + host;
 }
 
 function getParameterByName(name) {
@@ -644,12 +687,13 @@ function postprocess() {
     $('#download-definitions').on('click', function() {
             var idx = $("select[name='vhost-download'] option:selected").index();
             var vhost = ((idx <=0 ) ? "" : "/" + esc($("select[name='vhost-download'] option:selected").val()));
+            host = get_cookie('host');
         if (enable_uaa) {
-            var path = 'api/definitions' + vhost + '?download=' +
+            var path = '/' + host + '/api/definitions' + vhost + '?download=' +
                 esc($('#download-filename').val()) +
                 '&token=' + get_pref('uaa_token');
             } else {
-                var path = 'api/definitions' + vhost + '?download=' +
+                var path = '/' + host + '/api/definitions' + vhost + '?download=' +
                     esc($('#download-filename').val()) +
                     '&auth=' + get_cookie_value('auth');
             };
@@ -1181,10 +1225,11 @@ function with_req(method, path, body, fun) {
         location.reload();
         return;
     }
-
+    host = get_cookie('host');
+    $('#curhost').html(host);
     var json;
     var req = xmlHttpRequest();
-    req.open(method, 'api' + path, true );
+    req.open(method, '/' + host + '/api' + path, true );
     var header = auth_header();
     if (header !== null) {
         req.setRequestHeader('authorization', header);
@@ -1245,8 +1290,10 @@ function sync_req(type, params0, path_template, options) {
         show_popup('warn', fmt_escape_html(e));
         return false;
     }
+    host = get_cookie('host');
+    $('#curhost').html(host);
     var req = xmlHttpRequest();
-    req.open(type, 'api' + path, false);
+    req.open(type, '/' + host + '/api' + path, false);
     req.setRequestHeader('content-type', 'application/json');
     req.setRequestHeader('authorization', auth_header());
 
