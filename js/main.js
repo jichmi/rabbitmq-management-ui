@@ -1,5 +1,15 @@
 $(document).ready(function() {
     replace_content('outer', format('login', {}));
+    host = get_cookie('host');
+    $.each(hostlist, function(index,value){
+        $('#host').append($('<option>', {value: value, text: value, selected: value == host ? true : false }));
+    });
+    set_host_cookie($('#host').val());
+    $("#host").change(function(){
+        host = $(this).val();
+        $('#curhost').html(host);
+        set_host_cookie(host);
+    });
     start_app_login();
 });
 
@@ -25,6 +35,10 @@ function set_auth_pref(userinfo) {
     // 8 hours from now
     date.setHours(date.getHours() + 8);
     store_cookie_value_with_expiration('auth', encodeURIComponent(b64), date);
+}
+
+function set_host_cookie(host) {
+    document.cookie = 'host=' + host;
 }
 
 function login_route () {
@@ -508,9 +522,13 @@ function submit_import(form) {
         if (confirm_upload === true) {
             var idx = $("select[name='vhost-upload'] option:selected").index();
             var vhost = ((idx <= 0) ? "" : "/" + esc($("select[name='vhost-upload'] option:selected").val()));
-            form.action ="api/definitions" + vhost + '?auth=' + get_cookie_value('auth');
-            form.submit();
-            window.location.replace("../../#/import-succeeded");
+            var form_action = "/definitions" + vhost + '?auth=' + get_cookie_value('auth');
+            var file = form.file.files[0];
+            var fd = new FormData();
+            fd.append('file', file);
+            with_req('POST', form_action, fd, function(resp) {
+                window.location.replace("../../#/import-succeeded");
+            });
         } else {
             return false;
         }
@@ -548,7 +566,8 @@ function postprocess() {
     $('#download-definitions').click(function() {
             var idx = $("select[name='vhost-download'] option:selected").index();
             var vhost = ((idx <=0 ) ? "" : "/" + esc($("select[name='vhost-download'] option:selected").val()));
-            var path = 'api/definitions' + vhost + '?download=' +
+            host = get_cookie('host');
+            var path = '/' + host + '/api/definitions' + vhost + '?download=' +
                 esc($('#download-filename').val()) +
                 '&auth=' + get_cookie_value('auth');
             window.location = path;
@@ -1067,10 +1086,11 @@ function with_req(method, path, body, fun) {
         location.reload();
         return;
     }
-
+    host = get_cookie('host');
+    $('#curhost').html(host);
     var json;
     var req = xmlHttpRequest();
-    req.open(method, 'api' + path, true );
+    req.open(method, '/' + host + '/api' + path, true );
     req.setRequestHeader('authorization', auth_header());
     req.setRequestHeader('x-vhost', current_vhost);
     req.onreadystatechange = function () {
@@ -1115,8 +1135,10 @@ function sync_req(type, params0, path_template, options) {
         show_popup('warn', fmt_escape_html(e));
         return false;
     }
+    host = get_cookie('host');
+    $('#curhost').html(host);
     var req = xmlHttpRequest();
-    req.open(type, 'api' + path, false);
+    req.open(type, '/' + host + '/api' + path, false);
     req.setRequestHeader('content-type', 'application/json');
     req.setRequestHeader('authorization', auth_header());
 
