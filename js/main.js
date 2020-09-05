@@ -1,5 +1,14 @@
 $(document).ready(function() {
     replace_content('outer', format('login', {}));
+    host = get_cookie('host');
+    $.each(hostlist, function(index,value){
+        $('#host').append($('<option>', {value: value, text: value, selected: value == host ? true : false }));
+    });
+    set_host_cookie($('#host').val());
+    $("#host").change(function(){
+        host = $(this).val();
+        set_host_cookie(host);
+    });
     start_app_login();
 });
 
@@ -19,6 +28,10 @@ function dispatcher() {
 function set_auth_cookie(userinfo) {
     var b64 = b64_encode_utf8(userinfo);
     document.cookie = 'auth=' + encodeURIComponent(b64);
+}
+
+function set_host_cookie(host) {
+    document.cookie = 'host=' + host;
 }
 
 function login_route () {
@@ -452,6 +465,24 @@ function show_popup(type, text, mode) {
     });
 }
 
+function submit_import(form) {
+    if (form.file.value) {
+        var confirm_upload = confirm('Are you sure you want to import a definitions file? Some entities (vhosts, users, queues, etc) may be overwritten!');
+        if (confirm_upload === true) {
+            var file = form.file.files[0]; // FUTURE: limit upload file size (?)
+            var form_action = "/definitions" + '?auth=' + get_cookie('auth');
+            var fd = new FormData();
+            fd.append('file', file);
+            with_req('POST', form_action, fd, function(resp) {
+                show_popup('info', 'Your definitions were imported successfully.');
+            });
+        }
+    }
+    return false;
+};
+
+
+
 function postprocess() {
     $('form.confirm').submit(function() {
             return confirm("Are you sure? This object cannot be recovered " +
@@ -471,7 +502,8 @@ function postprocess() {
             }
         });
     $('#download-definitions').click(function() {
-            var path = 'api/definitions?download=' +
+            host = get_cookie('host');
+            var path = '/' + host + '/api/definitions?download=' +
                 esc($('#download-filename').val()) +
                 '&auth=' + get_cookie('auth');
             window.location = path;
@@ -834,14 +866,24 @@ function update_status(status) {
     replace_content('status', html);
 }
 
+function has_auth_cookie_value() {
+    return get_cookie('auth') != '';
+}
+
 function auth_header() {
     return "Basic " + decodeURIComponent(get_cookie('auth'));
 }
 
 function with_req(method, path, body, fun) {
+    if(!has_auth_cookie_value()) {
+        location.reload();
+        return;
+    }
     var json;
     var req = xmlHttpRequest();
-    req.open(method, 'api' + path, true );
+    host = get_cookie('host');
+    $('#curhost').html(host);
+    req.open(method, '/' + host + '/api' + path, true );
     req.setRequestHeader('authorization', auth_header());
     req.onreadystatechange = function () {
         if (req.readyState == 4) {
@@ -880,8 +922,10 @@ function sync_req(type, params0, path_template, options) {
         show_popup('warn', e);
         return false;
     }
+    host = get_cookie('host');
+    $('#curhost').html(host);
     var req = xmlHttpRequest();
-    req.open(type, 'api' + path, false);
+    req.open(type, '/' + host + '/api' + path, false);
     req.setRequestHeader('content-type', 'application/json');
     req.setRequestHeader('authorization', auth_header());
 

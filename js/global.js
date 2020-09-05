@@ -81,6 +81,17 @@ var user;
 
 // Set up the above vars
 function setup_global_vars() {
+    host = get_cookie('host');
+    $.each(hostlist, function(index,value){
+        $('#host').append($('<option>', {value: value, text: value, selected: value == host ? true : false }));
+    });
+    set_host_cookie($('#host').val());
+    $("#host").change(function(){
+        host = $(this).val();
+        $('#curhost').html(host);
+        set_host_cookie(host);
+        show_popup('info', '已切换到主机(集群): <span class="curhost">' + host + '</span>');
+    });
     var overview = JSON.parse(sync_get('/overview'));
     statistics_level = overview.statistics_level;
     user_tags = expand_user_tags(user.tags.split(","));
@@ -175,3 +186,5 @@ var update_counter = 0;
 // Holds chart data in between writing the div in an ejs and rendering
 // the chart.
 var chart_data = {};
+
+var host;

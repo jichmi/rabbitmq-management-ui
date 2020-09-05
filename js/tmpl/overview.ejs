@@ -218,7 +218,7 @@
 <div class="section-hidden administrator-only">
 <h2>Import / export definitions</h2>
 <div class="hider">
-  <form action="api/definitions" method="post" enctype="multipart/form-data">
+  <form method="post" enctype="multipart/form-data">
     <table class="two-col-layout">
       <tr>
         <td>
@@ -246,7 +246,7 @@
         <td>
           <p>
             <input type="hidden" name="redirect" value="../#/import-succeeded"/>
-            <input type="submit" value="Upload broker definitions"/>
+            <input type="submit" value="Upload broker definitions" onclick="submit_import($(this).closest('form')[0]); return false" />
             <span class="help" id="import-definitions"></span>
           </p>
         </td>

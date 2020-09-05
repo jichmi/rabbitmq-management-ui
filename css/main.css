@@ -3,7 +3,7 @@ body { font: 12px Verdana,sans-serif; color: #484848; padding: 8px 35px; }
 #login table { margin: auto; }
 #login p { text-align: center; }
 
-#logo { margin-bottom: 20px; }
+#logo { margin-bottom: 20px; float: left;}
 #logo img { border: none; }
 #login-version { float: right; color: #444; }
 #login-version form { float: left; display: block; margin-left: 10px; }
@@ -11,6 +11,11 @@ body { font: 12px Verdana,sans-serif; color: #484848; padding: 8px 35px; }
 #login-details { float: left; }
 #login-details p { padding: 0 0 0.2em 0; margin: 0; text-align: right; }
 #login-details b { color: black; font-weight: normal; }
+
+#hostlist {float: left; padding: 5px 20px;}
+#hostlist td {width: 100px; text-align: right; font-size: 16px; font-weight: bold; text-decoration: none; white-space: nowrap;}
+.curhost {color: red!important; font-size: 20px; text-align: left; padding: 0 10px;}
+
 #menu ul { float: left; padding: 0; margin: 0; }
 #menu li { float: left; list-style-type: none; padding: 0 2em 0 0; }
 #menu li a { display: block; padding: 0.5em; }
