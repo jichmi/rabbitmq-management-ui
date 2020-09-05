@@ -1,101 +1,31 @@
-<h1>Queue <b><%= fmt_string(queue.name) %></b></h1>
+<h1>Queue <b><%= fmt_string(queue.name) %></b><%= fmt_maybe_vhost(queue.vhost) %></h1>
 
 <div class="section">
   <h2>Overview</h2>
-  <div class="hider">
+  <div class="hider updatable">
     <%= queue_lengths('lengths-q', queue) %>
-<% if (statistics_level == 'fine') { %>
+<% if (rates_mode != 'none') { %>
     <%= message_rates('msg-rates-q', queue.message_stats) %>
 <% } %>
 
-    <div class="updatable">
     <h3>Details</h3>
-    <table class="facts">
+    <table class="facts facts-l">
       <tr>
-        <th>Parameters</th>
-        <td><%= fmt_parameters(queue) %></td>
+        <th>Features</th>
+        <td><%= fmt_features(queue) %></td>
       </tr>
       <tr>
         <th>Policy</th>
-        <td><%= fmt_string(queue.policy, '') %></td>
+        <td><%= link_policy(queue.vhost, queue.policy) %></td>
       </tr>
-      <tr>
-        <th>Exclusive owner</th>
-        <td>
-          <% if (queue.owner_pid_details == undefined) { %>
-            None
-          <% } else { %>
-            <%= link_conn(queue.owner_pid_details.name) %>
-          <% } %>
-        </td>
-      </tr>
-    </table>
-
-    <table class="facts">
-      <tr>
-        <th>State</th>
-        <td><%= fmt_object_state(queue) %></td>
-      </tr>
-      <tr>
-        <th>Consumers</th>
-        <td><%= fmt_string(queue.consumers) %></td>
-      </tr>
-      <tr>
-        <th>Consumer utilisation <span class="help" id="queue-consumer-utilisation"></th>
-        <td><%= fmt_percent(queue.consumer_utilisation) %></td>
-      </tr>
-      <tr>
-        <th>Memory</th>
-        <td><%= fmt_bytes(queue.memory) %></td>
-      </tr>
-    </table>
-
-    <table class="facts">
-      <tr>
-        <th>
-          Paging <span class="help" id="queue-memory-resident"></span>
-        </th>
-        <td>
-          <% var messages_ram = queue.backing_queue_status.ram_msg_count + queue.backing_queue_status.ram_ack_count; %>
-          <% if (messages_ram == queue.messages) { %>
-            No paging
-          <% } else { %>
-            <%= fmt_num_thousands(messages_ram) %> /
-            <%= fmt_num_thousands(queue.messages) %> msg (in RAM / total)
-          <% } %>
-          <sub>
-            <% if (queue.backing_queue_status.target_ram_count == 'infinity') { %>
-              No limit
-            <% } else { %>
-              RAM target: <%= fmt_num_thousands(queue.backing_queue_status.target_ram_count) %> msg
-            <% } %>
-          </sub>
-        </td>
-      </tr>
-      <tr>
-        <th>
-          Persistent <span class="help" id="queue-persistent"></span>
-        </th>
-        <td>
-          <%= fmt_num_thousands(queue.backing_queue_status.persistent_count) %> msg
-        </td>
-      </tr>
-    </table>
-
-    <table class="facts">
-<% if (vhosts_interesting) { %>
-      <tr>
-        <th>Virtual host</th>
-        <td><%= fmt_string(queue.vhost) %></td>
-      </tr>
-<% } %>
 <% if (nodes_interesting) { %>
       <tr>
         <th>Node</th>
         <td><%= fmt_node(queue.node) %></td>
       </tr>
+  <% if (!queue.exclusive) { %>
       <tr>
-        <th>Slaves</th>
+        <th>Mirrors</th>
         <td>
           <%
              var has_unsynced_node = false;
@@ -138,13 +68,95 @@
           <% } %>
         </td>
       </tr>
+  <% } %>
 <% } %>
     </table>
-    </div>
+
+    <table class="facts facts-l">
+      <tr>
+        <th>State</th>
+        <td><%= fmt_object_state(queue) %></td>
+      </tr>
+      <tr>
+        <th>Consumers</th>
+        <td><%= fmt_string(queue.consumers) %></td>
+      </tr>
+      <tr>
+        <th>Consumer utilisation <span class="help" id="queue-consumer-utilisation"></th>
+        <td><%= fmt_percent(queue.consumer_utilisation) %></td>
+      </tr>
+    </table>
+
+    <table class="facts">
+      <tr>
+        <td></td>
+        <th class="horizontal">Total</th>
+        <th class="horizontal">Ready</th>
+        <th class="horizontal">Unacked</th>
+        <th class="horizontal">In memory</th>
+        <th class="horizontal">Persistent</th>
+        <th class="horizontal">Transient, Paged Out</th>
+      </tr>
+      <tr>
+        <th>
+          Messages
+          <span class="help" id="queue-messages"></span>
+        </th>
+        <td class="r">
+          <%= fmt_num_thousands(queue.messages) %>
+        </td>
+        <td class="r">
+          <%= fmt_num_thousands(queue.messages_ready) %>
+        </td>
+        <td class="r">
+          <%= fmt_num_thousands(queue.messages_unacknowledged) %>
+        </td>
+        <td class="r">
+          <%= fmt_num_thousands(queue.messages_ram) %>
+        </td>
+        <td class="r">
+          <%= fmt_num_thousands(queue.messages_persistent) %>
+        </td>
+        <td class="r">
+          <%= fmt_num_thousands(queue.messages_paged_out) %>
+        </td>
+      </tr>
+      <tr>
+        <th>
+          Message body bytes
+          <span class="help" id="queue-message-body-bytes"></span>
+        </th>
+        <td class="r">
+          <%= fmt_bytes(queue.message_bytes) %>
+        </td>
+        <td class="r">
+          <%= fmt_bytes(queue.message_bytes_ready) %>
+        </td>
+        <td class="r">
+          <%= fmt_bytes(queue.message_bytes_unacknowledged) %>
+        </td>
+        <td class="r">
+          <%= fmt_bytes(queue.message_bytes_ram) %>
+        </td>
+        <td class="r">
+          <%= fmt_bytes(queue.message_bytes_persistent) %>
+        </td>
+        <td class="r">
+          <%= fmt_bytes(queue.message_bytes_paged_out) %>
+        </td>
+      </tr>
+      <tr>
+        <th>
+          Process memory
+          <span class="help" id="queue-process-memory"></span>
+        </th>
+        <td class="r"><%= fmt_bytes(queue.memory) %></td>
+      </tr>
+    </table>
   </div>
 </div>
 
-<% if (statistics_level == 'fine') { %>
+<% if (rates_mode == 'detailed') { %>
 <div class="section-hidden">
 <h2>Message rates breakdown</h2>
 <div class="hider updatable">
@@ -232,17 +244,67 @@
   </div>
 </div>
 
+<% if (is_user_policymaker) { %>
 <div class="section-hidden">
-  <h2>Delete / purge</h2>
+  <h2>Move messages</h2>
   <div class="hider">
-    <form action="#/queues" method="delete" class="confirm inline-form">
+  <% if (NAVIGATION['Admin'][0]['Shovel Management'] == undefined) { %>
+    <p>To move messages, the shovel plugin must be enabled, try:</p>
+    <pre>$ rabbitmq-plugins enable rabbitmq_shovel rabbitmq_shovel_management</pre>
+  <% } else { %>
+    <p>
+      The shovel plugin can be used to move messages from this queue
+      to another one. The form below will create a temporary shovel to
+      move messages to another queue on the same virtual host, with
+      default settings.
+    </p>
+    <p>
+      For more options <a href="#/dynamic-shovels">see the shovel
+      interface</a>.
+    </p>
+    <form action="#/shovel-parameters" method="put">
+      <input type="hidden" name="component" value="shovel"/>
+      <input type="hidden" name="vhost" value="<%= fmt_string(queue.vhost) %>"/>
+      <input type="hidden" name="name" value="Move from <%= fmt_string(queue.name) %>"/>
+      <input type="hidden" name="src-uri" value="amqp:///<%= esc(queue.vhost) %>"/>
+      <input type="hidden" name="src-queue" value="<%= fmt_string(queue.name) %>"/>
+
+      <input type="hidden" name="dest-uri" value="amqp:///<%= esc(queue.vhost) %>"/>
+      <input type="hidden" name="prefetch-count" value="1000"/>
+      <input type="hidden" name="add-forward-headers" value="false"/>
+      <input type="hidden" name="ack-mode" value="on-confirm"/>
+      <input type="hidden" name="delete-after" value="queue-length"/>
+      <input type="hidden" name="redirect" value="#/queues"/>
+
+      <table class="form">
+        <tr>
+          <th>Destination queue:</th>
+          <td><input type="text" name="dest-queue"/></td>
+        </tr>
+      </table>
+      <input type="submit" value="Move messages"/>
+    </form>
+  <% } %>
+  </div>
+</div>
+<% } %>
+
+<div class="section-hidden">
+  <h2>Delete</h2>
+  <div class="hider">
+    <form action="#/queues" method="delete" class="confirm-queue inline-form">
       <input type="hidden" name="vhost" value="<%= fmt_string(queue.vhost) %>"/>
       <input type="hidden" name="name" value="<%= fmt_string(queue.name) %>"/>
       <input type="hidden" name="mode" value="delete"/>
       <input type="submit" value="Delete" />
     </form>
+  </div>
+</div>
 
-    <form action="#/queues" method="delete" class="inline-form-right">
+<div class="section-hidden">
+  <h2>Purge</h2>
+  <div class="hider">
+    <form action="#/queues" method="delete" class="confirm-purge-queue inline-form">
       <input type="hidden" name="vhost" value="<%= fmt_string(queue.vhost) %>"/>
       <input type="hidden" name="name" value="<%= fmt_string(queue.name) %>"/>
       <input type="hidden" name="mode" value="purge"/>
@@ -250,3 +312,42 @@
     </form>
   </div>
 </div>
+
+<% if(queue.reductions || queue.garbage_collection) { %>
+<div class="section-hidden">
+<h2>Runtime Metrics (Advanced)</h2>
+ <div class="hider updatable">
+ <%= data_reductions('reductions-rates-queue', queue) %>
+ <table class="facts">
+    <% if (queue.garbage_collection.min_bin_vheap_size) { %>
+        <tr>
+        <th>Minimum binary virtual heap size in words (min_bin_vheap_size)</th>
+        <td><%= queue.garbage_collection.min_bin_vheap_size %></td>
+        </tr>
+    <% } %>
+
+    <% if (queue.garbage_collection.min_heap_size) { %>
+        <tr>
+        <th>Minimum heap size in words (min_heap_size)</th>
+        <td><%= queue.garbage_collection.min_heap_size %></td>
+        </tr>
+    <% } %>
+
+    <% if (queue.garbage_collection.fullsweep_after) { %>
+        <tr>
+        <th>Maximum generational collections before fullsweep (fullsweep_after)</th>
+        <td><%= queue.garbage_collection.fullsweep_after %></td>
+        </tr>
+    <% } %>
+
+    <% if (queue.garbage_collection.minor_gcs) { %>
+        <tr>
+        <th>Number of minor GCs (minor_gcs)</th>
+        <td><%= queue.garbage_collection.minor_gcs %></td>
+        </tr>
+    <% } %>
+ </table>
+ </div>
+</div>
+
+<% } %>

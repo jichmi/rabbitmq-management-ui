@@ -54,9 +54,9 @@
     list of subfields separated by dots. See the example below.</p>
 
     <p>Most of the GET queries return many fields per
-    object. See <a href="/doc/stats.html">the separate stats
+    object. See <a href="../doc/stats.html">the separate stats
     documentation</a>.</p>
-    
+
     <h2>Examples</h2>
 
     <p>A few quick examples for Windows and Unix, using the command line
@@ -202,7 +202,9 @@ Content-Length: 0</pre>
         <td class="path">/api/nodes/<i>name</i></td>
         <td>
           An individual node in the RabbitMQ cluster. Add
-          "?memory=true" to get memory statistics.
+          "?memory=true" to get memory statistics, and "?binary=true"
+          to get a breakdown of binary memory use (may be expensive if
+          there are many small binaries in the system).
         </td>
       </tr>
       <tr>
@@ -227,11 +229,62 @@ Content-Length: 0</pre>
           messages. POST to upload an existing set of definitions. Note
           that:
           <ul>
-            <li>The definitions are merged. Anything already existing is
-            untouched.</li>
-            <li>Conflicts will cause an error.</li>
-            <li>In the event of an error you will be left with a
-            part-applied set of definitions.</li>
+            <li>
+              The definitions are merged. Anything already existing on
+              the server but not in the uploaded definitions is
+              untouched.
+            </li>
+            <li>
+              Conflicting definitions on immutable objects (exchanges,
+              queues and bindings) will cause an error.
+            </li>
+            <li>
+              Conflicting definitions on mutable objects will cause
+              the object in the server to be overwritten with the
+              object from the definitions.
+            </li>
+            <li>
+              In the event of an error you will be left with a
+              part-applied set of definitions.
+            </li>
+          </ul>
+          For convenience you may upload a file from a browser to this
+          URI (i.e. you can use <code>multipart/form-data</code> as
+          well as <code>application/json</code>) in which case the
+          definitions should be uploaded as a form field named
+          "file".
+        </td>
+      </tr>
+      <tr>
+        <td>X</td>
+        <td></td>
+        <td></td>
+        <td>X</td>
+        <td class="path">/api/definitions/<i>vhost</i><br/>
+        </td>
+        <td>
+          The server definitions for a given virtual host -
+          exchanges, queues, bindings and policies.
+          POST to upload an existing set of definitions. Note that:
+          <ul>
+            <li>
+              The definitions are merged. Anything already existing on
+              the server but not in the uploaded definitions is
+              untouched.
+            </li>
+            <li>
+              Conflicting definitions on immutable objects (exchanges,
+              queues and bindings) will cause an error.
+            </li>
+            <li>
+              Conflicting definitions on mutable objects will cause
+              the object in the server to be overwritten with the
+              object from the definitions.
+            </li>
+            <li>
+              In the event of an error you will be left with a
+              part-applied set of definitions.
+            </li>
           </ul>
           For convenience you may upload a file from a browser to this
           URI (i.e. you can use <code>multipart/form-data</code> as
@@ -247,6 +300,14 @@ Content-Length: 0</pre>
         <td></td>
         <td class="path">/api/connections</td>
         <td>A list of all open connections.</td>
+      </tr>
+      <tr>
+        <td>X</td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td class="path">/api/vhosts/<i>vhost</i>/connections</td>
+        <td>A list of all open connections in a specific vhost.</td>
       </tr>
       <tr>
         <td>X</td>
@@ -283,8 +344,32 @@ Content-Length: 0</pre>
         <td></td>
         <td></td>
         <td></td>
+        <td class="path">/api/vhosts/<i>vhost</i>/channels</td>
+        <td>A list of all open channels in a specific vhost.</td>
+      </tr>
+      <tr>
+        <td>X</td>
+        <td></td>
+        <td></td>
+        <td></td>
         <td class="path">/api/channels/<i>channel</i></td>
         <td>Details about an individual channel.</td>
+      </tr>
+      <tr>
+        <td>X</td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td class="path">/api/consumers</td>
+        <td>A list of all consumers.</td>
+      </tr>
+      <tr>
+        <td>X</td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td class="path">/api/consumers/<i>vhost</i></td>
+        <td>A list of all consumers in a given virtual host.</td>
       </tr>
       <tr>
         <td>X</td>
@@ -308,9 +393,17 @@ Content-Length: 0</pre>
         <td>X</td>
         <td></td>
         <td class="path">/api/exchanges/<i>vhost</i>/<i>name</i></td>
-        <td>An individual exchange. To PUT an exchange, you will need a body looking something like this:
-<pre>{"type":"direct","auto_delete":false,"durable":true,"internal":false,"arguments":[]}</pre>
-        The <code>type</code> key is mandatory; other keys are optional.</td>
+        <td>
+          An individual exchange. To PUT an exchange, you will need a body looking something like this:
+          <pre>{"type":"direct","auto_delete":false,"durable":true,"internal":false,"arguments":{}}</pre>
+          The <code>type</code> key is mandatory; other keys are optional.
+          <p>
+            When DELETEing an exchange you can add the query string
+            parameter <code>if-unused=true</code>. This prevents the
+            delete from succeeding if the exchange is bound to a queue
+            or as a source to another exchange.
+          </p>
+        </td>
       </tr>
       <tr>
         <td>X</td>
@@ -348,10 +441,13 @@ Content-Length: 0</pre>
           <pre>{"routed": true}</pre>
           <code>routed</code> will be true if the message was sent to
           at least one queue.
-          <p>Please note that the publish / get paths in the HTTP API are
-          intended for injecting test messages, diagnostics etc - they do not
-          implement reliable delivery and so should be treated as a sysadmin's
-          tool rather than a general API for messaging.</p>
+          <p>
+            Please note that the HTTP API is not ideal for high
+            performance publishing; the need to create a new TCP
+            connection for each message published can limit message
+            throughput compared to AMQP or other protocols using
+            long-lived connections.
+          </p>
         </td>
       </tr>
       <tr>
@@ -376,9 +472,18 @@ Content-Length: 0</pre>
         <td>X</td>
         <td></td>
         <td class="path">/api/queues/<i>vhost</i>/<i>name</i></td>
-        <td>An individual queue. To PUT a queue, you will need a body looking something like this:
-<pre>{"auto_delete":false,"durable":true,"arguments":[],"node":"rabbit@smacmullen"}</pre>
-        All keys are optional.</td>
+        <td>
+          An individual queue. To PUT a queue, you will need a body looking something like this:
+          <pre>{"auto_delete":false,"durable":true,"arguments":{},"node":"rabbit@smacmullen"}</pre>
+          All keys are optional.
+          <p>
+            When DELETEing a queue you can add the query string
+            parameters <code>if-empty=true</code> and /
+            or <code>if-unused=true</code>. These prevent the delete
+            from succeeding if the queue contains messages, or has
+            consumers, respectively.
+          </p>
+        </td>
       </tr>
       <tr>
         <td>X</td>
@@ -435,10 +540,12 @@ Content-Length: 0</pre>
             message payload if it is larger than the size given (in bytes).</li>
           </ul>
           <p><code>truncate</code> is optional; all other keys are mandatory.</p>
-          <p>Please note that the publish / get paths in the HTTP API are
-          intended for injecting test messages, diagnostics etc - they do not
-          implement reliable delivery and so should be treated as a sysadmin's
-          tool rather than a general API for messaging.</p>
+          <p>
+            Please note that the get path in the HTTP API is intended
+            for diagnostics etc - it does not implement reliable
+            delivery and so should be treated as a sysadmin's tool
+            rather than a general API for messaging.
+          </p>
         </td>
       </tr>
       <tr>
@@ -463,14 +570,21 @@ Content-Length: 0</pre>
         <td></td>
         <td>X</td>
         <td class="path">/api/bindings/<i>vhost</i>/e/<i>exchange</i>/q/<i>queue</i></td>
-        <td>A list of all bindings between an exchange and a
-        queue. Remember, an exchange and a queue can be bound
-        together many times! To create a new binding, POST to this
-        URI. You will need a body looking something like this:
-          <pre>{"routing_key":"my_routing_key","arguments":[]}</pre>
-          All keys are optional.
-          The response will contain a <code>Location</code> header
-          telling you the URI of your new binding.
+        <td>
+          <p>
+            A list of all bindings between an exchange and a
+            queue. Remember, an exchange and a queue can be bound
+            together many times!
+            </p>
+          <p>
+            To create a new binding, POST to this
+            URI. Request body should be a JSON object optionally containing
+            two fields, <code>routing_key</code> (a string) and <code>arguments</code> (a map of optional arguments):
+            <pre>{"routing_key":"my_routing_key", "arguments":{"x-arg": "value"}}</pre>
+            All keys are optional.
+            The response will contain a <code>Location</code> header
+            telling you the URI of your new binding.
+          </p>
         </td>
       </tr>
       <tr>
@@ -481,7 +595,9 @@ Content-Length: 0</pre>
         <td class="path">/api/bindings/<i>vhost</i>/e/<i>exchange</i>/q/<i>queue</i>/<i>props</i></td>
         <td>An individual binding between an exchange and a queue.
         The <i>props</i> part of the URI is a "name" for the binding
-        composed of its routing key and a hash of its arguments.</td>
+        composed of its routing key and a hash of its
+        arguments. <i>props</i> is the field named "properties_key"
+        from a bindings listing response.</td>
       </tr>
       <tr>
         <td>X</td>
@@ -490,9 +606,22 @@ Content-Length: 0</pre>
         <td>X</td>
         <td class="path">/api/bindings/<i>vhost</i>/e/<i>source</i>/e/<i>destination</i></td>
         <td>
-          A list of all bindings between two exchanges. Similar to
+          <p>
+          A list of all bindings between two exchanges, similar to
           the list of all bindings between an exchange and a queue,
           above.
+          </p>
+          <p>
+          <p>
+            To create a new binding, POST to this
+            URI. Request body should be a JSON object optionally containing
+            two fields, <code>routing_key</code> (a string) and <code>arguments</code> (a map of optional arguments):
+            <pre>{"routing_key":"my_routing_key", "arguments":{"x-arg": "value"}}</pre>
+            All keys are optional.
+            The response will contain a <code>Location</code> header
+            telling you the URI of your new binding.
+          </p>
+          </p>
         </td>
       </tr>
       <tr>
@@ -554,10 +683,12 @@ or:
 <pre>{"password_hash":"2lmoth8l4H0DViLaK9Fxi6l9ds8=", "tags":"administrator"}</pre>
         The <code>tags</code> key is mandatory. Either
         <code>password</code> or <code>password_hash</code>
-        must be set. Setting <code>password_hash</code> to "" will ensure the
+        must be set. Setting <code>password_hash</code> to <code>""</code> will ensure the
         user cannot use a password to log in. <code>tags</code> is a
         comma-separated list of tags for the user. Currently recognised tags
-        are "administrator", "monitoring" and "management".
+        are <code>administrator</code>, <code>monitoring</code> and <code>management</code>.
+        <code>password_hash</code> must be generated using the algorithm described
+        <a href="http://rabbitmq.com/passwords.html#computing-password-hash">here</a>.
         </td>
       </tr>
       <tr>
@@ -600,7 +731,7 @@ or:
         <td></td>
         <td></td>
         <td class="path">/api/parameters</td>
-        <td>A list of all parameters.</td>
+        <td>A list of all vhost-scoped parameters.</td>
       </tr>
       <tr>
         <td>X</td>
@@ -608,7 +739,7 @@ or:
         <td></td>
         <td></td>
         <td class="path">/api/parameters/<i>component</i></td>
-        <td>A list of all parameters for a given component.</td>
+        <td>A list of all vhost-scoped parameters for a given component.</td>
       </tr>
       <tr>
         <td>X</td>
@@ -616,7 +747,7 @@ or:
         <td></td>
         <td></td>
         <td class="path">/api/parameters/<i>component</i>/<i>vhost</i></td>
-        <td>A list of all parameters for a given component and virtual host.</td>
+        <td>A list of all vhost-scoped parameters for a given component and virtual host.</td>
       </tr>
       <tr>
         <td>X</td>
@@ -624,10 +755,27 @@ or:
         <td>X</td>
         <td></td>
         <td class="path">/api/parameters/<i>component</i>/<i>vhost</i>/<i>name</i></td>
-        <td>An individual parameter. To PUT a parameter, you will need a body looking something like this:
+        <td>An individual vhost-scoped parameter. To PUT a parameter, you will need a body looking something like this:
 <pre>{"vhost": "/","component":"federation","name":"local_username","value":"guest"}</pre>
 </td>
       </tr>
+      <tr>
+        <td>X</td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td class="path">/api/global-parameters</td>
+        <td>A list of all global parameters.</td>
+      </tr>
+      <tr>
+        <td>X</td>
+        <td>X</td>
+        <td>X</td>
+        <td></td>
+        <td class="path">/api/global-parameters/<i>name</i></td>
+        <td>An individual global parameter. To PUT a parameter, you will need a body looking something like this:
+<pre>{"name":"user_vhost_mapping","value":{"guest":"/","rabbit":"warren"}}</pre>
+        </td>
       <tr>
         <td>X</td>
         <td></td>
@@ -669,6 +817,36 @@ or:
           body: <pre>{"status":"ok"}</pre> Note: the test queue will
           not be deleted (to to prevent queue churn if this is
           repeatedly pinged).
+        </td>
+      </tr>
+      <tr>
+        <td>X</td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td class="path">/api/healthchecks/node</td>
+        <td>
+          Runs basic healthchecks in the current node. Checks that the rabbit
+          application is running, channels and queues can be listed successfully, and
+          that no alarms are in effect. If everything is working correctly, will
+          return HTTP status 200 with body: <pre>{"status":"ok"}</pre> If
+          something fails, will return HTTP status 200 with the body of
+          <pre>{"status":"failed","reason":"string"}</pre>
+        </td>
+      </tr>
+      <tr>
+        <td>X</td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td class="path">/api/healthchecks/node/<i>node</i></td>
+        <td>
+          Runs basic healthchecks in the given node. Checks that the rabbit
+          application is running, list_channels and list_queues return, and
+          that no alarms are raised. If everything is working correctly, will
+          return HTTP status 200 with body: <pre>{"status":"ok"}</pre> If
+          something fails, will return HTTP status 200 with the body of
+          <pre>{"status":"failed","reason":"string"}</pre>
         </td>
       </tr>
     </table>

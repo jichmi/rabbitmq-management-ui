@@ -1,15 +1,14 @@
-<h1>Channel: <b><%= fmt_escape_html(channel.name) %></b></h1>
+<h1>Channel: <b><%= fmt_escape_html(channel.name) %></b><%= fmt_maybe_vhost(channel.vhost) %></h1>
 
 <div class="section">
 <h2>Overview</h2>
-<div class="hider">
-<% if (statistics_level == 'fine') { %>
+<div class="hider updatable">
+<% if (rates_mode != 'none') { %>
     <%= message_rates('msg-rates-ch', channel.message_stats) %>
 <% } %>
 
-<div class="updatable">
 <h3>Details</h3>
-<table class="facts">
+<table class="facts facts-l">
   <tr>
     <th>Connection</th>
     <td><%= link_conn(channel.connection_details.name) %></td>
@@ -18,12 +17,6 @@
   <tr>
     <th>Node</th>
     <td><%= fmt_node(channel.node) %></td>
-  </tr>
-<% } %>
-<% if (vhosts_interesting) { %>
-  <tr>
-    <th>Virtual host</th>
-    <td><%= fmt_string(channel.vhost) %></td>
   </tr>
 <% } %>
   <tr>
@@ -36,7 +29,7 @@
   </tr>
 </table>
 
-<table class="facts">
+<table class="facts facts-l">
   <tr>
     <th>State</th>
     <td><%= fmt_object_state(channel) %></td>
@@ -69,7 +62,6 @@
     <td><%= channel.acks_uncommitted %></td>
   </tr>
 </table>
-</div>
 
 </div>
 </div>
@@ -81,7 +73,7 @@
   </div>
 </div>
 
-<% if (statistics_level == 'fine') { %>
+<% if (rates_mode == 'detailed') { %>
 <div class="section">
 <h2>Message rates breakdown</h2>
 <div class="hider updatable">
@@ -103,3 +95,43 @@
 </div>
 </div>
 <% } %>
+
+<% if(channel.reductions || channel.garbage_collection) { %>
+<div class="section-hidden">
+<h2>Runtime Metrics (Advanced)</h2>
+ <div class="hider updatable">
+ <%= data_reductions('reductions-rates-conn', channel) %>
+ <table class="facts">
+    <% if (channel.garbage_collection.min_bin_vheap_size) { %>
+        <tr>
+        <th>Minimum binary virtual heap size in words (min_bin_vheap_size)</th>
+        <td><%= channel.garbage_collection.min_bin_vheap_size %></td>
+        </tr>
+    <% } %>
+
+    <% if (channel.garbage_collection.min_heap_size) { %>
+        <tr>
+        <th>Minimum heap size in words (min_heap_size)</th>
+        <td><%= channel.garbage_collection.min_heap_size %></td>
+        </tr>
+    <% } %>
+
+    <% if (channel.garbage_collection.fullsweep_after) { %>
+        <tr>
+        <th>Maximum generational collections before fullsweep (fullsweep_after)</th>
+        <td><%= channel.garbage_collection.fullsweep_after %></td>
+        </tr>
+    <% } %>
+
+    <% if (channel.garbage_collection.minor_gcs) { %>
+        <tr>
+        <th>Number of minor GCs (minor_gcs)</th>
+        <td><%= channel.garbage_collection.minor_gcs %></td>
+        </tr>
+    <% } %>
+ </table>
+ </div>
+</div>
+
+<% } %>
+

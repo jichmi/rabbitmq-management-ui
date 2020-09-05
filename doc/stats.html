@@ -110,14 +110,37 @@
       set an age and an increment for the samples you want. The end of
       the range returned will always correspond to the present.
     </p>
+
     <p>
-      Use <code>msg_rates_age</code>
-      and <code>msg_rates_incr</code> to return samples for messages
-      sent and received, <code>data_rates_age</code>
-      and <code>data_rates_incr</code> to return samples for bytes
-      sent and received, and <code>lengths_age</code>
-      and <code>lengths_incr</code> to return samples for queue
-      lengths. For example,
+      Different types of data take different query parameters to
+      return samples, as in the following table. You can specify more
+      than one set of parameters if the resource you are requesting
+      can generate more than one type of sample (for example, queues
+      can return message rates and queue lengths).
+    </p>
+
+    <table>
+      <tr>
+        <td>Messages sent and received</td>
+        <td><code>msg_rates_age</code> / <code>msg_rates_incr</code></td>
+      </tr>
+      <tr>
+        <td>Bytes sent and received</td>
+        <td><code>data_rates_age</code> / <code>data_rates_incr</code>
+        </td>
+      </tr>
+      <tr>
+        <td>Queue lengths</td>
+        <td><code>lengths_age</code> / <code>lengths_incr</code></td>
+      </tr>
+      <tr>
+        <td>Node statistics (e.g. file descriptors, disk space free)</td>
+        <td><code>node_stats_age</code> / <code>node_stats_incr</code></td>
+      </tr>
+    </table>
+
+    <p>
+      For example,
       appending <code>?lengths_age=3600&lengths_incr=60</code> will
       return the last hour's data on queue lengths, with a sample for
       every minute.
@@ -169,7 +192,7 @@
         </td>
       </tr>
       <tr>
-        <td><code>deliver_noack</code></td>
+        <td><code>deliver_no_ack</code></td>
         <td>
           Count of messages delivered in no-acknowledgement mode to consumers.
         </td>
@@ -182,7 +205,7 @@
         </td>
       </tr>
       <tr>
-        <td><code>get_noack</code></td>
+        <td><code>get_no_ack</code></td>
         <td>
           Count of messages delivered in no-acknowledgement mode in
           response to basic.get.
@@ -202,7 +225,7 @@
         </td>
       </tr>
       <tr>
-        <td><code>return</code></td>
+        <td><code>return_unroutable</code></td>
         <td>
           Count of messages returned to publisher as unroutable.
         </td>
@@ -215,13 +238,15 @@
 
     <h2>Detailed message stats objects</h2>
     <p>
-      In addition, queues, exchanges and channels will return a
+      In addition, queues, exchanges and channels can return a
       breakdown of message stats for each of their neighbours
       (i.e. adjacent objects in the chain: channel -> exchange ->
-      queue -> channel).
+      queue -> channel). This will only happen if
+      the <code>rates_mode</code> configuration item has been switched
+      to <code>detailed</code> from its default of <code>basic</code>.
     </p>
     <p>
-      As this possibly constitutes a large quantity of data, it is
+      As this possibly constitutes a large quantity of data, it is also
       only returned when querying a single channel, queue or exchange
       rather than a list. Note also that the default sample retention
       policy means that these detailed message stats do not retain
@@ -281,6 +306,12 @@
         <td>
           The name of the entire cluster, as set with <code>rabbitmqctl
           set_cluster_name</code>.
+        </td>
+      </tr>
+      <tr>
+        <td><code>contexts</code></td>
+        <td>
+          A list of web application contexts in the cluster.
         </td>
       </tr>
       <tr>
@@ -360,15 +391,22 @@
         </td>
       </tr>
       <tr>
-        <td><code>statistics_db_node</code></td>
+        <td><code>rates_mode</code></td>
         <td>
-          Name of the cluster node hosting the management statistics database.
+          'none', 'basic' or 'detailed'.
         </td>
       </tr>
       <tr>
-        <td><code>statistics_level</code></td>
+        <td><code>statistics_db_event_queue</code></td>
         <td>
-          Whether the node is running fine or coarse statistics.
+          Number of outstanding statistics events yet to be processed
+          by the database.
+        </td>
+      </tr>
+      <tr>
+        <td><code>statistics_db_node</code></td>
+        <td>
+          Name of the cluster node hosting the management statistics database.
         </td>
       </tr>
     </table>
@@ -393,9 +431,29 @@
         </td>
       </tr>
       <tr>
+        <td><code>cluster_links</code></td>
+        <td>
+          A list of the other nodes in the cluster. For each node,
+          there are details of the TCP connection used to connect to
+          it and statistics on data that has been transferred.
+        </td>
+      </tr>
+      <tr>
+        <td><code>config_files</code></td>
+        <td>
+          List of config files read by the node.
+        </td>
+      </tr>
+      <tr>
         <td><code>contexts</code></td>
         <td>
           List of all HTTP listeners on the node.
+        </td>
+      </tr>
+      <tr>
+        <td><code>db_dir</code></td>
+        <td>
+          Location of the persistent storage used by the node.
         </td>
       </tr>
       <tr>
@@ -417,6 +475,12 @@
         </td>
       </tr>
       <tr>
+        <td><code>enabled_plugins</code></td>
+        <td>
+          List of plugins which are both explicitly enabled and running.
+        </td>
+      </tr>
+      <tr>
         <td><code>exchange_types</code></td>
         <td>
           Exchange types available on the node.
@@ -432,6 +496,88 @@
         <td><code>fd_used</code></td>
         <td>
           Used file descriptors.
+        </td>
+      </tr>
+      <tr>
+        <td><code>io_read_avg_time</code></td>
+        <td>
+          Average wall time (milliseconds) for each disk read operation in
+          the last statistics interval.
+        </td>
+      </tr>
+      <tr>
+        <td><code>io_read_bytes</code></td>
+        <td>
+          Total number of bytes read from disk by the persister.
+        </td>
+      </tr>
+      <tr>
+        <td><code>io_read_count</code></td>
+        <td>
+          Total number of read operations by the persister.
+        </td>
+      </tr>
+      <tr>
+        <td><code>io_reopen_count</code></td>
+        <td>
+          Total number of times the persister has needed to recycle
+          file handles between queues. In an ideal world this number
+          will be zero; if the number is large, performance might be
+          improved by increasing the number of file handles available
+          to RabbitMQ.
+        </td>
+      </tr>
+      <tr>
+        <td><code>io_seek_avg_time</code></td>
+        <td>
+          Average wall time (milliseconds) for each seek operation in
+          the last statistics interval.
+        </td>
+      </tr>
+      </tr>
+      <tr>
+        <td><code>io_seek_count</code></td>
+        <td>
+          Total number of seek operations by the persister.
+        </td>
+      </tr>
+      <tr>
+        <td><code>io_sync_avg_time</code></td>
+        <td>
+          Average wall time (milliseconds) for each fsync() operation in
+          the last statistics interval.
+        </td>
+      </tr>
+      </tr>
+      <tr>
+        <td><code>io_sync_count</code></td>
+        <td>
+          Total number of fsync() operations by the persister.
+        </td>
+      </tr>
+      <tr>
+        <td><code>io_write_avg_time</code></td>
+        <td>
+          Average wall time (milliseconds) for each disk write operation in
+          the last statistics interval.
+        </td>
+      </tr>
+      <tr>
+        <td><code>io_write_bytes</code></td>
+        <td>
+          Total number of bytes written to disk by the persister.
+        </td>
+      </tr>
+      <tr>
+        <td><code>io_write_count</code></td>
+        <td>
+          Total number of write operations by the persister.
+        </td>
+      </tr>
+      <tr>
+        <td><code>log_file</code></td>
+        <td>
+          Location of main log file.
         </td>
       </tr>
       <tr>
@@ -453,9 +599,45 @@
         </td>
       </tr>
       <tr>
+        <td><code>mnesia_disk_tx_count</code></td>
+        <td>
+          Number of Mnesia transactions which have been performed that
+          required writes to disk. (e.g. creating a durable
+          queue). Only transactions which originated on this node are
+          included.
+        </td>
+      </tr>
+      <tr>
+        <td><code>mnesia_ram_tx_count</code></td>
+        <td>
+          Number of Mnesia transactions which have been performed that
+          did not require writes to disk. (e.g. creating a transient
+          queue). Only transactions which originated on this node are
+          included.
+        </td>
+      </tr>
+      <tr>
+        <td><code>msg_store_read_count</code></td>
+        <td>
+          Number of messages which have been read from the message store.
+        </td>
+      </tr>
+      <tr>
+        <td><code>msg_store_write_count</code></td>
+        <td>
+          Number of messages which have been written to the message store.
+        </td>
+      </tr>
+      <tr>
         <td><code>name</code></td>
         <td>
           Node name.
+        </td>
+      </tr>
+      <tr>
+        <td><code>net_ticktime</code></td>
+        <td>
+          Current kernel net_ticktime setting for the node.
         </td>
       </tr>
       <tr>
@@ -490,6 +672,33 @@
         </td>
       </tr>
       <tr>
+        <td><code>queue_index_journal_write_count</code></td>
+        <td>
+          Number of records written to the queue index journal. Each
+          record represents a message being published to a queue,
+          being delivered from a queue, and being acknowledged in a
+          queue.
+        </td>
+      </tr>
+      <tr>
+        <td><code>queue_index_read_count</code></td>
+        <td>
+          Number of records read from the queue index.
+        </td>
+      </tr>
+      <tr>
+        <td><code>queue_index_write_count</code></td>
+        <td>
+          Number of records written to the queue index.
+        </td>
+      </tr>
+      <tr>
+        <td><code>rates_mode</code></td>
+        <td>
+          'none', 'basic' or 'detailed'.
+        </td>
+      </tr>
+      <tr>
         <td><code>run_queue</code></td>
         <td>
           Average number of Erlang processes waiting to run.
@@ -503,6 +712,12 @@
         </td>
       </tr>
       <tr>
+        <td><code>sasl_log_file</code></td>
+        <td>
+          Location of <a href="http://www.erlang.org/doc/man/sasl_app.html">sasl</a> log file.
+        </td>
+      </tr>
+      <tr>
         <td><code>sockets_total</code></td>
         <td>
           File descriptors available for use as sockets.
@@ -512,12 +727,6 @@
         <td><code>sockets_used</code></td>
         <td>
           File descriptors used as sockets.
-        </td>
-      </tr>
-      <tr>
-        <td><code>statistics_level</code></td>
-        <td>
-          'fine' or 'coarse'.
         </td>
       </tr>
       <tr>
@@ -546,6 +755,15 @@
         <td>
           Detailed memory use statistics. Only appears
           if <code>?memory=true</code> is appended to the URL.
+        </td>
+      </tr>
+      <tr>
+        <td><code>binary</code></td>
+        <td>
+          Detailed breakdown of the owners of binary memory. Only
+          appears if <code>?binary=true</code> is appended to the
+          URL. Note that this can be an expensive query if there are
+          many small binaries in the system.
         </td>
       </tr>
     </table>

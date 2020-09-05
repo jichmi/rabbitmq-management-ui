@@ -7,7 +7,8 @@ dispatcher_add(function(sammy) {
     sammy.get('#/', function() {
             var reqs = {'overview': {path:    '/overview',
                                      options: {ranges: ['lengths-over',
-                                                        'msg-rates-over']}}};
+                                                        'msg-rates-over']}},
+                        'vhosts': '/vhosts'};
             if (user_monitor) {
                 reqs['nodes'] = '/nodes';
             }
@@ -26,13 +27,16 @@ dispatcher_add(function(sammy) {
 
     sammy.get('#/nodes/:name', function() {
             var name = esc(this.params['name']);
-            render({'node': '/nodes/' + name},
+            render({'node': {path:    '/nodes/' + name,
+                             options: {ranges: ['node-stats']}}},
                    'node', '');
+            });
+
+    sammy.get('#/connections', function() {
+            renderConnections();
         });
 
-    path('#/connections',
-         {'connections': {path: '/connections', options: {sort:true}}},
-        'connections');
+
     sammy.get('#/connections/:name', function() {
             var name = esc(this.params['name']);
             render({'connection': {path:    '/connections/' + name,
@@ -51,17 +55,22 @@ dispatcher_add(function(sammy) {
            return false;
         });
 
-    path('#/channels', {'channels': {path: '/channels', options: {sort:true}}},
-         'channels');
+    sammy.get('#/channels', function() {
+            renderChannels();
+        });
+
     sammy.get('#/channels/:name', function() {
             render({'channel': {path:   '/channels/' + esc(this.params['name']),
-                                options:{ranges:['msg-rates-ch']}}},
+                                options:{ranges:['data-rates-ch','msg-rates-ch']}}},
                    'channel', '#/channels');
         });
 
-    path('#/exchanges', {'exchanges':  {path:    '/exchanges',
-                                        options: {sort:true,vhost:true}},
-                         'vhosts': '/vhosts'}, 'exchanges');
+    
+    sammy.get('#/exchanges', function() {
+            renderExchanges();
+        });
+
+
     sammy.get('#/exchanges/:vhost/:name', function() {
             var path = '/exchanges/' + esc(this.params['vhost']) + '/' + esc(this.params['name']);
             render({'exchange': {path:    path,
@@ -85,13 +94,15 @@ dispatcher_add(function(sammy) {
             return false;
         });
 
-    path('#/queues', {'queues':  {path:    '/queues',
-                                  options: {sort:true,vhost:true}},
-                      'vhosts': '/vhosts'}, 'queues');
+    sammy.get('#/queues', function() {
+                          renderQueues();
+            });
+
+    
     sammy.get('#/queues/:vhost/:name', function() {
             var path = '/queues/' + esc(this.params['vhost']) + '/' + esc(this.params['name']);
             render({'queue': {path:    path,
-                              options: {ranges:['lengths-q', 'msg-rates-q']}},
+                              options: {ranges:['lengths-q', 'msg-rates-q', 'data-rates-q']}},
                     'bindings': path + '/bindings'}, 'queue', '#/queues');
         });
     sammy.put('#/queues', function() {
@@ -146,6 +157,7 @@ dispatcher_add(function(sammy) {
                     'users': '/users/'},
                 'vhost', '#/vhosts');
         });
+
     sammy.put('#/vhosts', function() {
             if (sync_put(this, '/vhosts/:name')) {
                 update_vhosts();
@@ -214,7 +226,9 @@ dispatcher_add(function(sammy) {
         });
 
     sammy.put('#/logout', function() {
-            document.cookie = 'auth=; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+            // clear a local storage value used by earlier versions
+            clear_pref('auth');
+            clear_cookie_value('auth');
             location.reload();
         });
 
@@ -223,5 +237,18 @@ dispatcher_add(function(sammy) {
         });
     sammy.put('#/rate-options', function() {
             update_rate_options(this);
+        });
+    sammy.put('#/column-options', function() {
+            update_column_options(this);
+        });
+    sammy.del("#/reset", function(){
+            if(sync_delete(this, '/reset')){
+                update();
+            }
+        });
+    sammy.del("#/reset_node", function(){
+            if(sync_delete(this, '/reset/:node')){
+                update();
+            }
         });
 });

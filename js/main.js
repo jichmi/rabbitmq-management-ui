@@ -1,14 +1,5 @@
 $(document).ready(function() {
     replace_content('outer', format('login', {}));
-    host = get_cookie('host');
-    $.each(hostlist, function(index,value){
-        $('#host').append($('<option>', {value: value, text: value, selected: value == host ? true : false }));
-    });
-    set_host_cookie($('#host').val());
-    $("#host").change(function(){
-        host = $(this).val();
-        set_host_cookie(host);
-    });
     start_app_login();
 });
 
@@ -25,20 +16,22 @@ function dispatcher() {
     }
 }
 
-function set_auth_cookie(userinfo) {
-    var b64 = b64_encode_utf8(userinfo);
-    document.cookie = 'auth=' + encodeURIComponent(b64);
-}
+function set_auth_pref(userinfo) {
+    // clear a local storage value used by earlier versions
+    clear_local_pref('auth');
 
-function set_host_cookie(host) {
-    document.cookie = 'host=' + host;
+    var b64 = b64_encode_utf8(userinfo);
+    var date  = new Date();
+    // 8 hours from now
+    date.setHours(date.getHours() + 8);
+    store_cookie_value_with_expiration('auth', encodeURIComponent(b64), date);
 }
 
 function login_route () {
     var userpass = '' + this.params['username'] + ':' + this.params['password'],
         location = window.location.href,
         hash = window.location.hash;
-    set_auth_cookie(decodeURIComponent(userpass));
+    set_auth_pref(decodeURIComponent(userpass));
     location = location.substr(0, location.length - hash.length);
     window.location.replace(location);
     // because we change url, we don't need to hit check_login as
@@ -46,18 +39,33 @@ function login_route () {
     // we've changed url.
 }
 
+function login_route_with_path() {
+  var params = ('' + this.params['splat']).split('/');
+  var user = params.shift();
+  var pass = params.shift();
+  var userpass = '' + user + ':' + pass,
+        location = window.location.href,
+        hash = window.location.hash;
+    set_auth_pref(decodeURIComponent(userpass));
+    location = location.substr(0, location.length - hash.length) + '#/' + params.join('/');
+    check_login();
+    window.location.replace(location);
+}
+
 function start_app_login() {
     app = new Sammy.Application(function () {
+        this.get('#/', function() {});
         this.put('#/login', function() {
             username = this.params['username'];
             password = this.params['password'];
-            set_auth_cookie(username + ':' + password);
+            set_auth_pref(username + ':' + password);
             check_login();
         });
-        this.get('#/login/:username/:password', login_route)
+        this.get('#/login/:username/:password', login_route);
+        this.get(/\#\/login\/(.*)/, login_route_with_path);
     });
     app.run();
-    if (get_cookie('auth') != '') {
+    if (get_cookie_value('auth') != null) {
         check_login();
     }
 }
@@ -65,7 +73,9 @@ function start_app_login() {
 function check_login() {
     user = JSON.parse(sync_get('/whoami'));
     if (user == false) {
-        document.cookie = 'auth=; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+        // clear a local storage value used by earlier versions
+        clear_pref('auth');
+        clear_cookie_value('auth');
         replace_content('login-status', '<p>Login failed</p>');
     }
     else {
@@ -96,7 +106,12 @@ function start_app() {
     // Note for when we upgrade: HashLocationProxy has become
     // DefaultLocationProxy in later versions, but otherwise the issue
     // remains.
-    Sammy.HashLocationProxy._interval = null;
+
+    // updated to the version  0.7.6 this _interval = null is fixed
+    // just leave the history here.
+    //Sammy.HashLocationProxy._interval = null;
+
+
     app = new Sammy.Application(dispatcher);
     app.run();
     var url = this.location.toString();
@@ -147,10 +162,13 @@ function update_vhosts() {
 
 function setup_extensions() {
     var extensions = JSON.parse(sync_get('/extensions'));
-    extension_count = extensions.length;
+    extension_count = 0;
     for (var i in extensions) {
         var extension = extensions[i];
-        dynamic_load(extension.javascript);
+        if ($.isPlainObject(extension) && extension.hasOwnProperty("javascript")) {
+            dynamic_load(extension.javascript);
+            extension_count++;
+        }
     }
 }
 
@@ -195,16 +213,16 @@ function set_timer_interval(interval) {
 function reset_timer() {
     clearInterval(timer);
     if (timer_interval != null) {
-        timer = setInterval('partial_update()', timer_interval);
+        timer = setInterval(partial_update, timer_interval);
     }
 }
 
 function update_manual(div, query) {
     var path;
     var template;
-    if (query == 'memory') {
-        path = current_reqs['node'] + '?memory=true';
-        template = 'memory';
+    if (query == 'memory' || query == 'binary') {
+        path = current_reqs['node']['path'] + '?' + query + '=true';
+        template = query;
     }
     var data = JSON.parse(sync_get(path));
 
@@ -215,6 +233,10 @@ function update_manual(div, query) {
 function render(reqs, template, highlight) {
     current_template = template;
     current_reqs = reqs;
+    for (var i in outstanding_reqs) {
+        outstanding_reqs[i].abort();
+    }
+    outstanding_reqs = [];
     current_highlight = highlight;
     update();
 }
@@ -234,27 +256,30 @@ function update() {
 }
 
 function partial_update() {
-    if ($('.updatable').length > 0) {
-        if (update_counter >= 200) {
-            update_counter = 0;
-            full_refresh();
-            return;
+    if (!$(".pagination_class").is(":focus")) {
+        if ($('.updatable').length > 0) {
+            if (update_counter >= 200) {
+                update_counter = 0;
+                full_refresh();
+                return;
+            }
+            with_update(function(html) {
+                update_counter++;
+                replace_content('scratch', html);
+                var befores = $('#main .updatable');
+                var afters = $('#scratch .updatable');
+                if (befores.length != afters.length) {
+                    console.log("before/after mismatch! Doing a full reload...");
+                    full_refresh();
+                }
+                for (var i = 0; i < befores.length; i++) {
+                    $(befores[i]).empty().append($(afters[i]).contents());
+                }
+                replace_content('scratch', '');
+                postprocess_partial();
+                render_charts();
+            });
         }
-        with_update(function(html) {
-            update_counter++;
-            replace_content('scratch', html);
-            var befores = $('#main .updatable');
-            var afters = $('#scratch .updatable');
-            if (befores.length != afters.length) {
-                throw("before/after mismatch");
-            }
-            for (var i = 0; i < befores.length; i++) {
-                $(befores[i]).empty().append($(afters[i]).contents());
-            }
-            replace_content('scratch', '');
-            postprocess_partial();
-            render_charts();
-        });
     }
 }
 
@@ -380,12 +405,15 @@ function y_position() {
 }
 
 function with_update(fun) {
+    if(outstanding_reqs.length > 0){
+        return false;
+    }
     with_reqs(apply_state(current_reqs), [], function(json) {
-            json.statistics_level = statistics_level;
             var html = format(current_template, json);
             fun(html);
             update_status('ok');
         });
+    return true;
 }
 
 function apply_state(reqs) {
@@ -399,12 +427,17 @@ function apply_state(reqs) {
         }
         var req2;
         if (options['vhost'] != undefined && current_vhost != '') {
-            req2 = req + '/' + esc(current_vhost);
+            var indexPage = req.indexOf("?page=");
+            if (indexPage >- 1) {
+				pageUrl = req.substr(indexPage);
+				req2 = req.substr(0,indexPage) + '/' + esc(current_vhost) + pageUrl;
+            } else
+
+              req2 = req + '/' + esc(current_vhost);
         }
         else {
             req2 = req;
         }
-
         var qs = [];
         if (options['sort'] != undefined && current_sort != null) {
             qs.push('sort=' + current_sort);
@@ -413,7 +446,7 @@ function apply_state(reqs) {
         if (options['ranges'] != undefined) {
             for (i in options['ranges']) {
                 var type = options['ranges'][i];
-                var range = get_pref('chart-range-' + type).split('|');
+                var range = get_pref('chart-range').split('|');
                 var prefix;
                 if (type.substring(0, 8) == 'lengths-') {
                     prefix = 'lengths';
@@ -424,41 +457,45 @@ function apply_state(reqs) {
                 else if (type.substring(0, 11) == 'data-rates-') {
                     prefix = 'data_rates';
                 }
+                else if (type == 'node-stats') {
+                    prefix = 'node_stats';
+                }
                 qs.push(prefix + '_age=' + parseInt(range[0]));
                 qs.push(prefix + '_incr=' + parseInt(range[1]));
             }
         }
+        /* Unknown options are used as query parameters as is. */
+        Object.keys(options).forEach(function (key) {
+          /* Skip known keys we already handled and undefined parameters. */
+          if (key == 'vhost' || key == 'sort' || key == 'ranges')
+            return;
+          if (!key || options[key] == undefined)
+            return;
+
+          qs.push(esc(key) + '=' + esc(options[key]));
+        });
         qs = qs.join('&');
-        if (qs != '') qs = '?' + qs;
+        if (qs != '')
+            if (req2.indexOf("?page=") >- 1)
+            qs = '&' + qs;
+             else
+            qs = '?' + qs;
 
         reqs2[k] = req2 + qs;
     }
     return reqs2;
 }
 
-function show_popup(type, text, mode) {
+function show_popup(type, text, _mode) {
     var cssClass = '.form-popup-' + type;
     function hide() {
-        if (mode == 'fade') {
-            $(cssClass).fadeOut(200, function() {
-                $(this).remove();
-            });
-        }
-        else {
-            $(cssClass).slideUp(200, function() {
-                $(this).remove();
-            });
-        }
+        $(cssClass).fadeOut(100, function() {
+            $(this).remove();
+        });
     }
-
     hide();
-    $('h1').after(format('error-popup', {'type': type, 'text': text}));
-    if (mode == 'fade') {
-        $(cssClass).fadeIn(200);
-    }
-    else {
-        $(cssClass).center().slideDown(200);
-    }
+    $('#outer').after(format('popup', {'type': type, 'text': text}));
+    $(cssClass).fadeIn(100);
     $(cssClass + ' span').click(function () {
         $('.popup-owner').removeClass('popup-owner');
         hide();
@@ -469,28 +506,34 @@ function submit_import(form) {
     if (form.file.value) {
         var confirm_upload = confirm('Are you sure you want to import a definitions file? Some entities (vhosts, users, queues, etc) may be overwritten!');
         if (confirm_upload === true) {
-            var file = form.file.files[0]; // FUTURE: limit upload file size (?)
-            var form_action = "/definitions" + '?auth=' + get_cookie('auth');
-            var fd = new FormData();
-            fd.append('file', file);
-            with_req('POST', form_action, fd, function(resp) {
-                show_popup('info', 'Your definitions were imported successfully.');
-            });
+            var idx = $("select[name='vhost-upload'] option:selected").index();
+            var vhost = ((idx <= 0) ? "" : "/" + esc($("select[name='vhost-upload'] option:selected").val()));
+            form.action ="api/definitions" + vhost + '?auth=' + get_cookie_value('auth');
+            form.submit();
+            window.location.replace("../../#/import-succeeded");
+        } else {
+            return false;
         }
+    } else {
+        return false;
     }
-    return false;
 };
 
-
-
 function postprocess() {
+    $('form.confirm-queue').submit(function() {
+        return confirm("Are you sure? The queue is going to be deleted. " +
+                       "Messages cannot be recovered after deletion.");
+        });
+
+    $('form.confirm-purge-queue').submit(function() {
+        return confirm("Are you sure? Messages cannot be recovered after purging.");
+        });
+
     $('form.confirm').submit(function() {
             return confirm("Are you sure? This object cannot be recovered " +
                            "after deletion.");
         });
-    $('div.section h2, div.section-hidden h2').click(function() {
-            toggle_visibility($(this));
-        });
+
     $('label').map(function() {
             if ($(this).attr('for') == '') {
                 var id = 'auto-label-' + Math.floor(Math.random()*1000000000);
@@ -501,25 +544,30 @@ function postprocess() {
                 }
             }
         });
+
     $('#download-definitions').click(function() {
-            host = get_cookie('host');
-            var path = '/' + host + '/api/definitions?download=' +
+            var idx = $("select[name='vhost-download'] option:selected").index();
+            var vhost = ((idx <=0 ) ? "" : "/" + esc($("select[name='vhost-download'] option:selected").val()));
+            var path = 'api/definitions' + vhost + '?download=' +
                 esc($('#download-filename').val()) +
-                '&auth=' + get_cookie('auth');
+                '&auth=' + get_cookie_value('auth');
             window.location = path;
             setTimeout('app.run()');
             return false;
         });
+
     $('.update-manual').click(function() {
             update_manual($(this).attr('for'), $(this).attr('query'));
         });
-    $('input, select').die();
-    $('.multifield input').live('keyup', function() {
+
+    $(document).on('keyup', '.multifield input', function() {
             update_multifields();
         });
-    $('.multifield select').live('change', function() {
+
+    $(document).on('change', '.multifield select', function() {
             update_multifields();
         });
+
     $('.controls-appearance').change(function() {
         var params = $(this).get(0).options;
         var selected = $(this).val();
@@ -533,44 +581,159 @@ function postprocess() {
             }
         }
     });
-    setup_visibility();
-    $('.help').die().live('click', function() {
-        help($(this).attr('id'))
+
+    $(document).on('click', '.help', function() {
+      show_popup('help', HELP[$(this).attr('id')]);
     });
-    $('.rate-options').die().live('click', function() {
-        var remove = $('.popup-owner').length == 1 &&
-                     $('.popup-owner').get(0) == $(this).get(0);
+
+    $(document).on('click', '.popup-options-link', function() {
         $('.popup-owner').removeClass('popup-owner');
-        if (remove) {
-            $('.form-popup-rate-options').fadeOut(200, function() {
-                $(this).remove();
-            });
-        }
-        else {
-            $(this).addClass('popup-owner');
-            show_popup('rate-options', format('rate-options', {span: $(this)}),
-                       'fade');
-        }
+        $(this).addClass('popup-owner');
+        var template = $(this).attr('type') + '-options';
+        show_popup('options', format(template, {span: $(this)}), 'fade');
     });
-    $('input, select').live('focus', function() {
+
+    $(document).on('click', '.rate-visibility-option', function() {
+        var k = $(this).attr('data-pref');
+        var show = get_pref(k) !== 'true';
+        store_pref(k, '' + show);
+        partial_update();
+    });
+
+    $(document).on('focus', 'input, select', function() {
         update_counter = 0; // If there's interaction, reset the counter.
     });
+
     $('.tag-link').click(function() {
         $('#tags').val($(this).attr('tag'));
     });
-    $('form.auto-submit select, form.auto-submit input').live('click', function(){
+
+    $('.argument-link').click(function() {
+        var field = $(this).attr('field');
+        var row = $('#' + field).find('.mf').last();
+        var key = row.find('input').first();
+        var value = row.find('input').last();
+        var type = row.find('select').last();
+        key.val($(this).attr('key'));
+        value.val($(this).attr('value'));
+        type.val($(this).attr('type'));
+        update_multifields();
+    });
+
+    $(document).on('click', 'form.auto-submit select, form.auto-submit input', function(){
         $(this).parents('form').submit();
     });
-    $('#filter').die().live('keyup', debounce(update_filter, 500));
+
+    $('#filter').on('keyup', debounce(update_filter, 500));
+
     $('#filter-regex-mode').change(update_filter_regex_mode);
-    $('#truncate').die().live('keyup', debounce(update_truncate, 500));
+
+    $('#truncate').on('keyup', debounce(update_truncate, 500));
+
     if (! user_administrator) {
         $('.administrator-only').remove();
     }
+
     update_multifields();
 }
 
+function url_pagination_template(template, defaultPage, defaultPageSize){
+    var page_number_request = fmt_page_number_request(template, defaultPage);
+    var page_size = fmt_page_size_request(template, defaultPageSize);
+    var name_request = fmt_filter_name_request(template, "");
+    var use_regex = fmt_regex_request(template, "") == "checked";
+    if (use_regex) {
+        name_request = esc(name_request);
+    }
+    return  '/' + template +
+        '?page=' +  page_number_request +
+        '&page_size=' + page_size +
+        '&name=' + name_request +
+        '&use_regex=' + use_regex;
+}
+
+function stored_page_info(template, page_start){
+    var pageSize = fmt_strip_tags($('#' + template+'-pagesize').val());
+    var filterName = fmt_strip_tags($('#' + template+'-name').val());
+
+    store_pref(template + '_current_page_number', page_start);
+    if (filterName != null && filterName != undefined) {
+        store_pref(template + '_current_filter_name', filterName);
+    }
+    var regex_on =  $("#" + template + "-filter-regex-mode").is(':checked');
+
+    if (regex_on != null && regex_on != undefined) {
+        store_pref(template + '_current_regex', regex_on ? "checked" : " " );
+    }
+
+    if (pageSize != null && pageSize != undefined) {
+        store_pref(template + '_current_page_size', pageSize);
+    }
+}
+
+function update_pages(template, page_start){
+     stored_page_info(template, page_start);
+     switch (template) {
+         case 'queues' : renderQueues(); break;
+         case 'exchanges' : renderExchanges(); break;
+         case 'connections' : renderConnections(); break;
+         case 'channels' : renderChannels(); break;
+     }
+}
+
+function renderQueues() {
+    render({'queues':  {path: url_pagination_template('queues', 1, 100),
+                        options: {sort:true, vhost:true, pagination:true}},
+                        'vhosts': '/vhosts'}, 'queues', '#/queues');
+}
+
+function renderExchanges() {
+    render({'exchanges':  {path: url_pagination_template('exchanges', 1, 100),
+                          options: {sort:true, vhost:true, pagination:true}},
+                         'vhosts': '/vhosts'}, 'exchanges', '#/exchanges');
+}
+
+function renderConnections() {
+    render({'connections': {path:  url_pagination_template('connections', 1, 100),
+                            options: {sort:true}}},
+                            'connections', '#/connections');
+}
+
+function renderChannels() {
+    render({'channels': {path:  url_pagination_template('channels', 1, 100),
+                        options: {sort:true}}},
+                        'channels', '#/channels');
+}
+
+function update_pages_from_ui(sender) {
+    var val = $(sender).val();
+    var raw = !!$(sender).attr('data-page-start') ? $(sender).attr('data-page-start') : val;
+    var s   = fmt_strip_tags(raw);
+    update_pages(current_template, s);
+}
+
 function postprocess_partial() {
+    $('.pagination_class_input').keypress(function(e) {
+        if (e.keyCode == 13) {
+            update_pages_from_ui(this);
+        }
+    });
+
+    $('.pagination_class_checkbox').click(function(e) {
+        update_pages_from_ui(this);
+    });
+
+    $('.pagination_class_select').change(function(e) {
+        update_pages_from_ui(this);
+    });
+
+    setup_visibility();
+
+    $('#main').off('click', 'div.section h2, div.section-hidden h2');
+    $('#main').on('click', 'div.section h2, div.section-hidden h2', function() {
+            toggle_visibility($(this));
+        });
+
     $('.sort').click(function() {
             var sort = $(this).attr('sort');
             if (current_sort == sort) {
@@ -582,7 +745,7 @@ function postprocess_partial() {
             }
             update();
         });
-    $('.help').html('(?)');
+
     // TODO remove this hack when we get rid of "updatable"
     if ($('#filter-warning-show').length > 0) {
         $('#filter-truncate').addClass('filter-warning');
@@ -602,7 +765,8 @@ function update_multifield(multifield, dict) {
     var largest_id = 0;
     var empty_found = false;
     var name = multifield.attr('id');
-    $('#' + name + ' *[name$="_mftype"]').each(function(index) {
+    var type_inputs = $('#' + name + ' *[name$="_mftype"]');
+    type_inputs.each(function(index) {
         var re = new RegExp(name + '_([0-9]*)_mftype');
         var match = $(this).attr('name').match(re);
         if (!match) return;
@@ -623,10 +787,12 @@ function update_multifield(multifield, dict) {
                 var key = dict ? $('#' + prefix + '_mfkey').val() : '';
                 var value = input.val();
                 if (key == '' && value == '') {
-                    if (empty_found) {
-                        $(this).parent().remove();
+                    if (index == type_inputs.length - 1) {
+                        empty_found = true;
                     }
-                    empty_found = true;
+                    else {
+                        $(this).parents('.mf').first().remove();
+                    }
                 }
             }
             else {
@@ -642,13 +808,13 @@ function update_multifield(multifield, dict) {
             multifield_input(prefix, 'type', t);
 
         if (dict) {
-            multifield.append('<table><tr><td>' +
+            multifield.append('<table class="mf"><tr><td>' +
                               multifield_input(prefix, 'key', 'text') +
                               '</td><td class="equals"> = </td><td>' +
                               val_type + '</td></tr></table>');
         }
         else {
-            multifield.append('<div>' + val_type + '</div>');
+            multifield.append('<div class="mf">' + val_type + '</div>');
         }
     }
 }
@@ -681,7 +847,7 @@ function update_filter_regex(jElem) {
             current_filter_regex = new RegExp(current_filter,'i');
         } catch (e) {
             jElem.parents('.filter').append('<p class="status-error">' +
-                                            e.message + '</p>');
+                                            fmt_escape_html(e.message) + '</p>');
         }
     }
 }
@@ -728,6 +894,11 @@ function setup_visibility() {
         }
         if (show) {
             $(this).addClass('section-visible');
+            // Workaround for... something. Although div.hider is
+            // display:block anyway, not explicitly setting this
+            // prevents the first slideToggle() from animating
+            // successfully; instead the element just vanishes.
+            $(this).find('.hider').attr('style', 'display:block;');
         }
         else {
             $(this).addClass('section-invisible');
@@ -749,17 +920,27 @@ function toggle_visibility(item) {
         all.addClass('section-invisible');
     }
     else {
-        if (all.hasClass('section-hidden'))
+        if (all.hasClass('section-hidden')) {
             store_pref(pref, 't');
-        else
+        } else {
             clear_pref(pref);
+        }
         all.removeClass('section-invisible');
         all.addClass('section-visible');
     }
 }
 
 function publish_msg(params0) {
-    var params = params_magic(params0);
+    try {
+        var params = params_magic(params0);
+        publish_msg0(params);
+    } catch (e) {
+        show_popup('warn', fmt_escape_html(e));
+        return false;
+    }
+}
+
+function publish_msg0(params) {
     var path = fill_path_template('/exchanges/:vhost/:name/publish', params);
     params['payload_encoding'] = 'string';
     params['properties'] = {};
@@ -845,18 +1026,20 @@ function format(template, json) {
         return tmpl.render(json);
     } catch (err) {
         clearInterval(timer);
-        debug(err['name'] + ": " + err['message']);
+        console.log("Uncaught error: " + err);
+        console.log("Stack: " + err['stack']);
+        debug(err['name'] + ": " + err['message'] + "\n" + err['stack'] + "\n");
     }
 }
 
 function update_status(status) {
     var text;
     if (status == 'ok')
-        text = "Last update: " + fmt_date(new Date());
+        text = "Refreshed " + fmt_date(new Date());
     else if (status == 'error') {
         var next_try = new Date(new Date().getTime() + timer_interval);
         text = "Error: could not connect to server since " +
-            fmt_date(last_successful_connect) + ".<br/>Will retry at " +
+            fmt_date(last_successful_connect) + ". Will retry at " +
             fmt_date(next_try) + ".";
     }
     else
@@ -867,32 +1050,42 @@ function update_status(status) {
 }
 
 function has_auth_cookie_value() {
-    return get_cookie('auth') != '';
+    return get_cookie_value('auth') != null;
 }
 
 function auth_header() {
-    return "Basic " + decodeURIComponent(get_cookie('auth'));
+    if(has_auth_cookie_value()) {
+        return "Basic " + decodeURIComponent(get_cookie_value('auth'));    
+    } else {
+        return null;
+    }
 }
 
 function with_req(method, path, body, fun) {
     if(!has_auth_cookie_value()) {
+        // navigate to the login form
         location.reload();
         return;
     }
+
     var json;
     var req = xmlHttpRequest();
-    host = get_cookie('host');
-    $('#curhost').html(host);
-    req.open(method, '/' + host + '/api' + path, true );
+    req.open(method, 'api' + path, true );
     req.setRequestHeader('authorization', auth_header());
+    req.setRequestHeader('x-vhost', current_vhost);
     req.onreadystatechange = function () {
         if (req.readyState == 4) {
+            var ix = jQuery.inArray(req, outstanding_reqs);
+            if (ix != -1) {
+                outstanding_reqs.splice(ix, 1);
+            }
             if (check_bad_response(req, true)) {
                 last_successful_connect = new Date();
                 fun(req);
             }
         }
     };
+    outstanding_reqs.push(req);
     req.send(body);
 }
 
@@ -919,22 +1112,20 @@ function sync_req(type, params0, path_template, options) {
         params = params_magic(params0);
         path = fill_path_template(path_template, params);
     } catch (e) {
-        show_popup('warn', e);
+        show_popup('warn', fmt_escape_html(e));
         return false;
     }
-    host = get_cookie('host');
-    $('#curhost').html(host);
     var req = xmlHttpRequest();
-    req.open(type, '/' + host + '/api' + path, false);
+    req.open(type, 'api' + path, false);
     req.setRequestHeader('content-type', 'application/json');
     req.setRequestHeader('authorization', auth_header());
 
     if (options != undefined || options != null) {
-	if (options.headers != undefined || options.headers != null) {
-	    jQuery.each(options.headers, function (k, v) {
-		req.setRequestHeader(k, v);
-	    });
-	}
+        if (options.headers != undefined || options.headers != null) {
+            jQuery.each(options.headers, function (k, v) {
+            req.setRequestHeader(k, v);
+            });
+        }
     }
 
     try {
@@ -975,7 +1166,29 @@ function check_bad_response(req, full_page_404) {
     else if (req.status >= 400 && req.status <= 404) {
         var reason = JSON.parse(req.responseText).reason;
         if (typeof(reason) != 'string') reason = JSON.stringify(reason);
-        show_popup('warn', reason);
+
+        var error = JSON.parse(req.responseText).error;
+        if (typeof(error) != 'string') error = JSON.stringify(error);
+
+        if (error == 'bad_request' || error == 'not_found' || error == 'not_authorised') {
+            show_popup('warn', fmt_escape_html(reason));
+        } else if (error == 'page_out_of_range') {
+            var seconds = 60;
+            if (last_page_out_of_range_error > 0)
+                    seconds = (new Date().getTime() - last_page_out_of_range_error.getTime())/1000;
+            if (seconds > 3) {
+                 Sammy.log('server reports page is out of range, redirecting to page 1');
+                 var contexts = ["queues", "exchanges", "connections", "channels"];
+                 var matches = /api\/(.*)\?/.exec(req.responseURL);
+                 if (matches != null && matches.length > 1) {
+                     contexts.forEach(function(item) {
+                         if (matches[1].indexOf(item) == 0) {update_pages(item, 1)};
+                     });
+                 } else update_pages(current_template, 1);
+
+                 last_page_out_of_range_error = new Date();
+            }
+        }
     }
     else if (req.status == 408) {
         update_status('timeout');
@@ -990,8 +1203,7 @@ function check_bad_response(req, full_page_404) {
         update_status('error');
     }
     else {
-        debug("Got response code " + req.status + " with body " +
-              req.responseText);
+        debug("Management API returned status code " + req.status + " - <strong>" + fmt_escape_html_one_line(req.responseText) + "</strong>");
         clearInterval(timer);
     }
 
@@ -1010,10 +1222,7 @@ function fill_path_template(template, params) {
 }
 
 function params_magic(params) {
-    return check_password(
-             add_known_arguments(
-               maybe_remove_fields(
-                 collapse_multifields(params))));
+    return check_password(maybe_remove_fields(collapse_multifields(params)));
 }
 
 function collapse_multifields(params0) {
@@ -1084,25 +1293,6 @@ function collapse_multifields(params0) {
             }
         }
     }
-    return params;
-}
-
-function add_known_arguments(params) {
-    for (var k in KNOWN_ARGS) {
-        var v = params[k];
-        if (v != undefined && v != '') {
-            var type = KNOWN_ARGS[k].type;
-            if (type == 'int') {
-                v = parseInt(v);
-                if (isNaN(v)) {
-                    throw(k + " must be an integer.");
-                }
-            }
-            params.arguments[k] = v;
-        }
-        delete params[k];
-    }
-
     return params;
 }
 
@@ -1183,6 +1373,20 @@ function put_policy(sammy, mandatory_keys, num_keys, bool_keys) {
     if (sync_put(sammy, '/policies/:vhost/:name')) update();
 }
 
+function update_column_options(sammy) {
+    var mode = sammy.params['mode'];
+    for (var group in COLUMNS[mode]) {
+        var options = COLUMNS[mode][group];
+        for (var i = 0; i < options.length; i++) {
+            var key = options[i][0];
+            var value = sammy.params[mode + '-' + key] != undefined;
+            store_pref('column-' + mode + '-' + key, value);
+        }
+    }
+
+    partial_update();
+}
+
 function debug(str) {
     $('<p>' + str + '</p>').appendTo('#debug');
 }
@@ -1195,7 +1399,7 @@ function keys(obj) {
     return ks;
 }
 
-// Don't use the jQuery AJAX support, it seemss to have trouble reporting
+// Don't use the jQuery AJAX support, it seems to have trouble reporting
 // server-down type errors.
 function xmlHttpRequest() {
     var res;
